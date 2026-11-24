@@ -78,6 +78,7 @@ test('手机端输入框挂载附件后不遮挡、不挤窄输入框，且不�
     await page.addStyleTag({ content: hostCss })
     await page.addStyleTag({ content: tavernCss })
     await page.addStyleTag({ content: themeCss })
+    if (options.accessoryInset) await page.addStyleTag({ content: `:root { --dsh-ios-accessory-inset: ${options.accessoryInset}px }` })
     return page.evaluate(() => {
       const box = selector => {
         const el = document.querySelector(selector)
@@ -129,9 +130,11 @@ test('手机端输入框挂载附件后不遮挡、不挤窄输入框，且不�
   const iosKeyboard = await measure({ htmlClass: iosClass + ' dsh-tavern-ios-composer-keyboard', withAccessory: true, fileCount: 1 })
   assert.equal(iosIdle.seatBottomPadding, 16, '收起键盘时输入卡离底')
   assert.ok(iosIdle.card.left >= iosIdle.seat.left + 12 && iosIdle.card.right <= iosIdle.seat.right - 12, '输入卡左右留白')
-  assert.equal(iosKeyboard.seatBottomPadding - iosIdle.seatBottomPadding, 48, '系统工具条额外占用 48px')
-  assert.ok(iosKeyboard.seat.bottom - iosKeyboard.send.bottom >= 64, '键盘工具条没有盖到发送按钮')
-  assert.ok(iosKeyboard.rail.bottom <= iosKeyboard.input.top + 0.5, '附件仍排在编辑框上方')
-  assert.ok(iosKeyboard.input.bottom <= iosKeyboard.tools.top && iosKeyboard.input.bottom <= iosKeyboard.send.top, '编辑框和发送区分两行')
+  const iosTyping = await measure({ htmlClass: iosClass + ' dsh-tavern-ios-composer-keyboard', withAccessory: true, fileCount: 1, accessoryInset: 48 })
+  assert.equal(iosKeyboard.seatBottomPadding, 0, '仅弹键盘时无工具条补偿')
+  assert.equal(iosTyping.seatBottomPadding - iosKeyboard.seatBottomPadding, 48, '键入后为系统工具条让位')
+  assert.ok(iosTyping.seat.bottom - iosTyping.send.bottom >= 48, '键盘工具条没有盖到发送按钮')
+  assert.ok(iosTyping.rail.bottom <= iosTyping.input.top + 0.5, '附件仍排在编辑框上方')
+  assert.equal(iosTyping.card.height, iosKeyboard.card.height, '补偿不改变输入卡高度')
 
 })

@@ -7,9 +7,10 @@ function narrowLayout() { return typeof window.matchMedia === "function" && wind
 const TAVERN_KEYBOARD_INSET_MIN = 8;
 // 焦点进出后自己刷这么多毫秒的帧：安卓输入法动画约 250ms，留出首尾事件的余量。
 const TAVERN_KEYBOARD_SETTLE_MS = 450;
-// iOS browser bars also change the viewport height. Reserve room for the
-// native form controls only for a keyboard-sized change while composing.
+// Browser chrome can move without opening the keyboard.
 const TAVERN_IOS_KEYBOARD_MIN = 96;
+const TAVERN_IOS_ACCESSORY_HEIGHT = 48;
+const TAVERN_IOS_EDIT_EVENTS = ["beforeinput", "input", "compositionstart", "compositionupdate"];
 
 // 键盘和页面必须同一帧动。安卓上 visualViewport 的 resize 要等输入法动画收尾才来，
 // 只按它锁像素就会出现「输入法先弹，页面过一会才上移」，事件漏一次还会彻底不动。
@@ -52,10 +53,10 @@ function installVisualViewportPin(doc) {
         (navigator?.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const narrow = view.matchMedia(TAVERN_MOBILE_QUERY);
     const touch = view.matchMedia("(pointer: coarse)");
-    const properties = ["--dsh-vv-top", "--dsh-vv-height", "--dsh-shell-height", "--dsh-keyboard-inset", "--dsh-composer-offset", "--dsh-sheet-max", "--dsh-header-bottom", "--dsh-composer-left", "--dsh-composer-width"];
+    const properties = ["--dsh-ios-accessory-inset", "--dsh-vv-top", "--dsh-vv-height", "--dsh-shell-height", "--dsh-keyboard-inset", "--dsh-composer-offset", "--dsh-sheet-max", "--dsh-header-bottom", "--dsh-composer-left", "--dsh-composer-width"];
     const previous = properties.map(name => [name, html.style.getPropertyValue(name), html.style.getPropertyPriority(name)]);
     let frame = 0, chaseFrame = 0, chaseUntil = 0, disposed = false, seat = null, card = null, header = null, boxDirty = true;
-    let iosIdleHeight = 0, iosComposer = null;
+    let iosIdleHeight = 0, iosComposer = null, iosEditedCard = null, iosKeyboardBottom = 0;
     let lastInnerH = -1, lastInnerW = -1, lastVvH = -1, lastVvTop = -1, lastKbTop = -1, lastKbH = -1;
     // Anything wider than the screen lets a phone browser zoom the page out to fit it: the layout viewport grows past
     // 100vw, so every overlay sized to the screen (stage CONFIG art, the phone, sheets) leaves a strip on the right.
@@ -128,6 +129,8 @@ function installVisualViewportPin(doc) {
         if (!iosPhone) {
             iosComposer = null;
             iosIdleHeight = 0;
+            iosEditedCard = null;
+            iosKeyboardBottom = 0;
             removeClasses("dsh-tavern-ios-composer-keyboard");
         }
         if (!narrow.matches && !touch.matches) {
@@ -169,7 +172,24 @@ function installVisualViewportPin(doc) {
             iosIdleHeight = editingComposer || iosKeyboardOpen ? idleHeight : layoutHeight;
             // Keep the send button in place through pointer focus changes, until
             // the viewport confirms the keyboard has actually closed.
-            iosComposer = iosKeyboardOpen && (editingComposer || iosComposer === card) ? card : null;
+            const previousComposer = iosComposer;
+            iosComposer = iosKeyboardOpen && (editingComposer || previousComposer === card) ? card : null;
+            let accessoryInset = 0;
+            if (iosComposer) {
+                const bottom = height + top;
+                if (iosEditedCard !== iosComposer || !iosKeyboardBottom) iosKeyboardBottom = bottom;
+                if (iosEditedCard === iosComposer) {
+                    // Some iOS form toolbars overlay the page without changing its
+                    // viewport. Only reserve the part not already covered by a
+                    // viewport change from the pre-edit keyboard position.
+                    const shift = Math.min(TAVERN_IOS_ACCESSORY_HEIGHT, bottom - iosKeyboardBottom);
+                    accessoryInset = TAVERN_IOS_ACCESSORY_HEIGHT + shift;
+                }
+            } else if (previousComposer || !editingComposer) {
+                iosEditedCard = null;
+                iosKeyboardBottom = 0;
+            }
+            setPx("--dsh-ios-accessory-inset", accessoryInset);
             toggleClass("dsh-tavern-ios-composer-keyboard", Boolean(iosComposer));
         }
         toggleClass("dsh-tavern-viewport-pinned", true);
@@ -246,6 +266,18 @@ function installVisualViewportPin(doc) {
     function onFocusChange(event) {
         if (isKeyboardTarget(event && event.target)) immediate();
     }
+    function onComposerEdit(event) {
+        const target = event.target;
+        if (!narrow.matches || !target || !card?.contains(target) || !isKeyboardTarget(target)) return;
+        if (iosEditedCard !== card) {
+            iosEditedCard = card;
+            immediate();
+        } else {
+            // Text suggestions and IME composition can move the viewport after
+            // input, with a late or missing visualViewport event.
+            onViewportChange();
+        }
+    }
     function onViewportScroll() {
         if (snapshotChanged()) sync();
         const layout = Number(view.innerHeight) || 0;
@@ -287,7 +319,8 @@ function installVisualViewportPin(doc) {
     for (const name of ["focusin", "focusout"]) doc.addEventListener(name, onFocusChange);
     // 原生全屏切换可能只改变安全区样式，不触发窗口 resize；及时重算顶栏与浮层锚点。
     for (const name of ["fullscreenchange", "webkitfullscreenchange"]) doc.addEventListener(name, markDirtyAndSchedule);
-    // 键盘事件只有 resize/scroll 两个来源，必须在处理函数里当场改样式，再延后一帧就是肉眼可见的错位。
+    if (ios) for (const name of TAVERN_IOS_EDIT_EVENTS) doc.addEventListener(name, onComposerEdit, true);
+    // 收到视口事件就更新，避免在浏览器工具条移动后多等一帧。
     vv?.addEventListener("resize", onViewportChange);
     vv?.addEventListener("scroll", onViewportScroll);
     // 输入法自己的几何事件：键盘动画期间每帧都会来，比等可视化视口可靠。
@@ -305,6 +338,7 @@ function installVisualViewportPin(doc) {
         for (const name of ["orientationchange", "pageshow"]) view.removeEventListener(name, immediate);
         for (const name of ["focusin", "focusout"]) doc.removeEventListener(name, onFocusChange);
         for (const name of ["fullscreenchange", "webkitfullscreenchange"]) doc.removeEventListener(name, markDirtyAndSchedule);
+        if (ios) for (const name of TAVERN_IOS_EDIT_EVENTS) doc.removeEventListener(name, onComposerEdit, true);
         vv?.removeEventListener("resize", onViewportChange);
         vv?.removeEventListener("scroll", onViewportScroll);
         if (keyboard && typeof keyboard.removeEventListener === "function") keyboard.removeEventListener("geometrychange", onViewportChange);

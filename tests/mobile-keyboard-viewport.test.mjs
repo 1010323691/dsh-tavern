@@ -174,8 +174,8 @@ test('visualViewport 缩小时当场改高度，不等下一帧', () => {
   assert.equal(style.getPropertyValue('--dsh-shell-height'), '100%')
 })
 
-test('iOS 输入工具条让位随键盘进出，点发送时不会提前回落', () => {
-  const { doc, harness, style, release } = installPin({ userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit' })
+test('iOS 仅在键入后补偿工具条，跟随延迟的视口变化直到键盘收起', () => {
+  const { doc, harness, style, release, clock } = installPin({ userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit' })
   const classes = doc.documentElement.classList
   const opened = () => classes.contains('dsh-tavern-ios-composer-keyboard')
   assert.equal(classes.contains('dsh-tavern-ios-composer'), true)
@@ -193,6 +193,23 @@ test('iOS 输入工具条让位随键盘进出，点发送时不会提前回落'
   assert.equal(opened(), true)
   assert.equal(style.getPropertyValue('--dsh-vv-top'), '18px')
   assert.equal(style.getPropertyValue('--dsh-keyboard-inset'), '0px', '工具条让位不重复计算键盘高度')
+  const accessoryInset = () => style.getPropertyValue('--dsh-ios-accessory-inset')
+  assert.equal(accessoryInset(), '0px', '刚弹出键盘时保留原位')
+  clock.now += 500
+  harness.flush()
+  assert.equal(harness.pending(), 0, '模拟停顿后再键入，之前的键盘动画已结束')
+
+  doc.dispatch('beforeinput', { target: editor })
+  assert.equal(accessoryInset(), '48px', '即使浏览器没有报告工具条，也从首字开始让位')
+  harness.vv.offsetTop = 30
+  clock.now += 16
+  harness.flush()
+  assert.equal(style.getPropertyValue('--dsh-vv-top'), '30px')
+  assert.equal(accessoryInset(), '60px', '浏览器向下偏移时，输入框位置保持稳定')
+  harness.vv.height = 392
+  harness.vv.offsetTop = 18
+  doc.dispatch('input', { target: editor })
+  assert.equal(accessoryInset(), '0px', '浏览器已缩掉工具条高度时不重复上抬')
 
   doc.activeElement = { nodeType: 1, tagName: 'BUTTON', inComposer: true }
   doc.dispatch('focusout', { target: editor })
@@ -201,12 +218,18 @@ test('iOS 输入工具条让位随键盘进出，点发送时不会提前回落'
   harness.vv.offsetTop = 0
   harness.vv.dispatch('resize')
   assert.equal(opened(), false)
+  assert.equal(accessoryInset(), '0px')
+  doc.activeElement = editor
+  doc.dispatch('focusin', { target: editor })
+  harness.vv.height = 440
+  harness.vv.dispatch('resize')
+  assert.equal(accessoryInset(), '0px', '再次打开键盘时清空上次键入状态')
   release()
   assert.equal(classes.contains('dsh-tavern-ios-composer'), false)
 })
 
 test('iOS 同步缩小布局与可视区时，逐帧变化仍能识别键盘', () => {
-  const { doc, harness, release } = installPin({ userAgent: 'iPhone' })
+  const { doc, harness, style, release } = installPin({ userAgent: 'iPhone' })
   const opened = () => doc.documentElement.classList.contains('dsh-tavern-ios-composer-keyboard')
   doc.activeElement = { nodeType: 1, tagName: 'TEXTAREA', inComposer: true }
   doc.dispatch('focusin', { target: doc.activeElement })
@@ -215,6 +238,8 @@ test('iOS 同步缩小布局与可视区时，逐帧变化仍能识别键盘', (
     harness.view.dispatch('resize')
   }
   assert.equal(opened(), true)
+  doc.dispatch('compositionstart', { target: doc.activeElement })
+  assert.equal(style.getPropertyValue('--dsh-ios-accessory-inset'), '48px', '中文组字从开始时即让位')
   harness.view.innerHeight = harness.vv.height = 800
   harness.view.dispatch('resize')
   assert.equal(opened(), false, '关闭键盘时编辑器仍有焦点也要回落')
