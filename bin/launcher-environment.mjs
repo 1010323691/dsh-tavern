@@ -18,7 +18,7 @@ const launcherOptions = argsBeforeOptionTerminator(process.argv.slice(2))
 const hostArgument = launcherOptions.find((arg) => arg.startsWith('--host='))?.slice(7)
   || (launcherOptions.includes('--host') ? launcherOptions[launcherOptions.indexOf('--host') + 1] : '')
 export const RUNTIME_HOST = hostArgument || process.env.DSH_TAVERN_RUNTIME_HOST || process.env.DSH_TAVERN_HOST || installation.host || 'cli'
-export const CLI_HOST = RUNTIME_HOST === 'cli' ? resolveBindHost(process.env.DSH_TAVERN_BIND) : DEFAULT_BIND_HOST
+export const CLI_HOST = RUNTIME_HOST === 'cli' ? resolveBindHost(process.env.DSH_TAVERN_BIND ?? installation.bindHost) : DEFAULT_BIND_HOST
 export const LEGACY_DSH_ROOT = process.env.DSH_TAVERN_LEGACY_DSH_HOME || process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
 export const DSH_ROOT = path.resolve(RUNTIME_HOST === 'cli'
   ? (process.env.DSH_TAVERN_CLI_HOME || (installation.host === 'cli' && installation.dshHome) || path.join(os.homedir(), '.dsh-tavern'))

@@ -267,6 +267,8 @@ OpenAI 兼容服务可在 **设置 → 模型 → 添加模型提供商 → 自�
 
 需要 shell 补全时运行 `dsh-tavern completion bash`（zsh/fish/powershell 同理），按输出注释启用；`dsh-tavern man` 输出 man 手册，可用 `dsh-tavern man > dsh-tavern.1` 保存，再用 `man ./dsh-tavern.1` 查看。
 
+双击启动时，可在仓库根目录的本机配置 `.dsh-tavern-local.json` 中设置 `"bindHost": "192.168.1.10"`，使用本机实际的局域网 IP。手机连到同一局域网后，打开启动脚本显示的完整地址。环境变量 `DSH_TAVERN_BIND` 可覆盖该设置。
+
 局域网 / VPN 绑定与安全要求见[命令行远程访问文档](https://github.com/flizzywine/dsh-tavern/wiki/命令行版：局域网与VPN访问)。
 
 如果本机启用了 TUN Fake-IP，且人物卡的静态资源被拦截，可在 DSH 服务的环境中设置 `DSH_TAVERN_ALLOW_CDN_FAKE_IP=1` 后重启。收到 Fake-IP 时，酒馆通过 Cloudflare 的公共 DNS 查询 HTTPS 资源域名，再连接验证过的公网地址。
