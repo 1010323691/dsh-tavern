@@ -26,7 +26,6 @@ const messageDeletionFeature = {Checkbox: () => null, assistantSelector: () => n
 const tavernModelRefusalNotice = () => '';
 const tavernMvuReceiptForTurn = () => null;
 const tavernModClients = {slot: () => []}, tavernStageBoundary = (_, child) => child;
-const installTavernReplyRuns = noop, disposeTavernReplyRuns = noop;
 const createSessionCompat = () => ({});
 const createTavernFrameSlashExecutor = () => noop;
 const createTavernScriptSessionOwner = () => ({start: noop, dispose: noop});

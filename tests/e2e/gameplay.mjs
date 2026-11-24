@@ -1038,20 +1038,17 @@ try {
     delete report.currentStep
     break scenario
   }
-  // 工具提交的正文一次性落地，长正文必须从第一行开始读，而不是停在最后一行。
-  if (storyToolScenario) await step('工具提交的长正文从开头显示', async () => {
-    const reveal = await page.evaluate(() => {
+  if (storyToolScenario) await step('工具提交的长正文结束后继续跟随最新内容', async () => {
+    const measure = () => {
       const scroller = document.querySelector('[data-conversation-scroll]')
       const rows = [...document.querySelectorAll('[data-chat-flow-kind="assistant-step"]')].filter(row => row.getBoundingClientRect().height > 0 && !row.closest('[hidden]'))
-      const row = rows.at(-1)
-      const box = scroller.getBoundingClientRect()
-      return { top: Math.round(row.getBoundingClientRect().top - box.top), height: Math.round(row.getBoundingClientRect().height),
+      return { height: Math.round(rows.at(-1)?.getBoundingClientRect().height || 0),
         scrollTop: Math.round(scroller.scrollTop), floor: Math.round(scroller.scrollHeight - scroller.clientHeight) }
-    })
-    report.storyToolReveal = reveal
-    assert.ok(reveal.height > 1500, '长正文没有渲染成整段：' + JSON.stringify(reveal))
-    assert.ok(reveal.scrollTop < reveal.floor - 400, '生成完长正文后停在底部：' + JSON.stringify(reveal))
-    assert.ok(reveal.top >= 0 && reveal.top <= 40, '正文开头没有对齐视口顶部：' + JSON.stringify(reveal))
+    }
+    const result = await page.evaluate(measure)
+    report.storyToolTail = result
+    assert.ok(result.height > 1500, '长正文没有渲染成整段：' + JSON.stringify(result))
+    assert.ok(result.floor - result.scrollTop <= 32, '长正文结束后未停在底部：' + JSON.stringify(result))
   })
   if (castScenario) await step('台词显示成带头像的说话人行，刷新后仍在', async () => {
     const rows = page.locator('.dsh-tavern-cast-line').filter({ visible: true })

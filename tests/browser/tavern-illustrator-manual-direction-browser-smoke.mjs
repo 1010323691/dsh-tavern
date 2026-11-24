@@ -12,7 +12,6 @@ import { browserReactScript } from '../fixtures/browser-react.mjs'
 const hostSource = await readFile(new URL('../../tavern-plugin/src/client/features/assistant-renderer.js', import.meta.url), 'utf8')
 const extensionsSource = await readFile(new URL('../../tavern-plugin/src/client/features/plugin-extensions.js', import.meta.url), 'utf8')
 const imageClientSource = await readFile(new URL('../../tavern-plugin/packages/dsh-tavern-image-bundled/client.js', import.meta.url), 'utf8')
-const revealSource = await readFile(new URL('../../tavern-plugin/src/client/modules/reply-reveal.js', import.meta.url), 'utf8')
 const inlineFieldSource = await readFile(new URL('../../tavern-plugin/src/client/inline-field.js', import.meta.url), 'utf8')
 const tavernCss = await readFile(new URL('../../tavern-plugin/lib/client-assets/tavern.css', import.meta.url), 'utf8')
 
@@ -41,7 +40,7 @@ const run = declaration(extensionsSource, 'watchTavernIllustrationStart') + '\n'
 const press = declaration(extensionsSource, 'useTavernIllustratePress')
 const title = extensionsSource.match(/const TAVERN_ILLUSTRATE_TITLE = [^\n]*/)[0]
 const drawRunner = declaration(imageClientSource, 'createMessageDrawRunner')
-const scroller = declaration(revealSource, 'tavernReplyRevealScroller')
+const scroller = declaration(hostSource, 'tavernIllustrationScroller')
 const chromeCandidates = [process.env.CHROME_PATH]
 if (process.platform === 'win32') chromeCandidates.push('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
 const chromePath = chromeCandidates.find(candidate => candidate && existsSync(candidate)) || chromium.executablePath()

@@ -985,21 +985,8 @@
 				const pluginMedia = useTavernPluginMedia(props.sessionId, storyTurn, playView && settled);
 				const pluginText = playView ? createTavernPluginTextContext({ items: pluginMedia.items, extras: [], sessionId: props.sessionId, turn: storyTurn, streaming: data.status === "running" }) : null;
 
-                // 正文走工具调用时整段正文一次性落地：宿主把提交折叠成一条普通回复，
-                // 消息 ID 带 tavern-tool-reply: 前缀。普通逐字流式的回复没有这个前缀，
-                // 生成完仍停在末尾，读者不会被打断。只有页面看着这一回合跑完、读者
-                // 本来就在跟随底部时，才把正文开头放回视口顶部。
-                const replyMessageId = data.finalNode && typeof data.finalNode.messageId === "string" ? data.finalNode.messageId : "";
                 const replyText = (Array.isArray(data.blocks) ? data.blocks : []).filter(function (block) { return block && block.kind === "text"; })
                     .map(function (block) { return String(block.text || ""); }).join("\n");
-                React.useLayoutEffect(function () {
-                    if (!playView || !settled || replyText.trim() === "") return;
-                    if (!replyMessageId.startsWith("tavern-tool-reply:")) return;
-                    if (!tavernReplyRunWatch || !tavernReplyRunWatch.watching(props.sessionId)) return;
-                    if (tavernReplyRunWatch.seen(props.sessionId, replyMessageId)) return;
-                    tavernReplyRunWatch.mark(props.sessionId, replyMessageId);
-                    if (historyNode.current) tavernReplyReveal(historyNode.current, { host: window });
-                }, [props.sessionId, replyMessageId, replyText, playView, settled]);
                 // 正文一旦画在屏幕上就记下来：之后计划重算想把这行收掉时，除非同一段正文已经
                 // 在别的行上画着（那才叫"搬走"），这一行必须留着（turn-history.js tavernShownBodies）。
                 React.useLayoutEffect(function () {
@@ -1175,6 +1162,17 @@
 					React.createElement("circle", { cx: 5.5, cy: 6, r: 1.25, stroke: "currentColor" }),
 					React.createElement("path", { d: "M1.75 11.5 5.6 8.2C6 7.86 6.6 7.88 6.97 8.25L8.6 9.88 10.6 8.05C10.98 7.7 11.57 7.72 11.93 8.09L14.25 10.5", stroke: "currentColor", strokeLinejoin: "round" }));
 			}
+			function tavernIllustrationScroller(row, host) {
+				const marked = row.closest("[data-conversation-scroll]");
+				if (marked) return marked;
+				for (let node = row.parentElement; node && node !== host.document.body; node = node.parentElement) {
+					let style = null;
+					try { style = host.getComputedStyle(node); } catch (_) { continue; }
+					if (style && /(auto|scroll|overlay)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) return node;
+				}
+				return host.document.scrollingElement || null;
+			}
+
 			function TavernPluginIllustrateAction(props) {
 				const [busy, setBusy] = React.useState(false);
 				const [manualOpen, setManualOpen] = React.useState(false);
@@ -1237,7 +1235,7 @@
 						if (instructionRef.current) {
 							instructionRef.current.focus({ preventScroll: true });
 							const section = instructionRef.current.closest(".dsh-tavern-illustration-instructions");
-							const scroller = section && tavernReplyRevealScroller(section, window);
+							const scroller = section && tavernIllustrationScroller(section, window);
 							if (scroller) {
 								const box = section.getBoundingClientRect();
 								const viewport = scroller === document.scrollingElement ? { top: 0, bottom: window.innerHeight } : scroller.getBoundingClientRect();
@@ -1266,10 +1264,6 @@
 			}
 			function register(input) {
 				// uiWorkspace 由 dsh-client-ui-workspace 提供；缺失时（老宿主/未加载）退化为 sessions.retain。
-				input.ctx.effect(function () {
-					installTavernReplyRuns(input.ctx.sessions);
-					return function () { disposeTavernReplyRuns(); };
-				}, "dsh-tavern: reply reveal runs");
 				function resolveUiWorkspace() {
 					try { return input.ctx.get("uiWorkspace") || null; } catch (_) { return null; }
 				}
