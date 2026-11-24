@@ -40839,7 +40839,6 @@ function tavernFloorHeightRecall(key, width) {
         const TAVERN_KEYBOARD_SETTLE_MS = 450;
         // Browser chrome can move without opening the keyboard.
         const TAVERN_IOS_KEYBOARD_MIN = 96;
-        const TAVERN_IOS_ACCESSORY_HEIGHT = 48;
         const TAVERN_IOS_EDIT_EVENTS = ["beforeinput", "input", "compositionstart", "compositionupdate"];
 
         // 键盘和页面必须同一帧动。安卓上 visualViewport 的 resize 要等输入法动画收尾才来，
@@ -40998,6 +40997,7 @@ function tavernFloorHeightRecall(key, width) {
                     ((editingComposer || (iosComposer && iosComposer === card)) && idleHeight - height >= TAVERN_IOS_KEYBOARD_MIN));
                 const keyboardInset = keyboardPadPx(keyboard, shellHeight);
                 const visible = Math.max(0, shellHeight - keyboardInset);
+                const shellTop = shell === "100%" ? 0 : top;
                 if (iosPhone) {
                     iosIdleHeight = editingComposer || iosKeyboardOpen ? idleHeight : layoutHeight;
                     // Keep the send button in place through pointer focus changes, until
@@ -41006,15 +41006,16 @@ function tavernFloorHeightRecall(key, width) {
                     iosComposer = iosKeyboardOpen && (editingComposer || previousComposer === card) ? card : null;
                     let accessoryInset = 0;
                     if (iosComposer) {
-                        const bottom = height + top;
-                        if (iosEditedCard !== iosComposer || !iosKeyboardBottom) iosKeyboardBottom = bottom;
-                        if (iosEditedCard === iosComposer) {
-                            // Some iOS form toolbars overlay the page without changing its
-                            // viewport. Only reserve the part not already covered by a
-                            // viewport change from the pre-edit keyboard position.
-                            const shift = Math.min(TAVERN_IOS_ACCESSORY_HEIGHT, bottom - iosKeyboardBottom);
-                            accessoryInset = TAVERN_IOS_ACCESSORY_HEIGHT + shift;
+                        const bottom = visible + shellTop;
+                        if (iosComposer !== previousComposer || (Number(view.innerWidth) || 0) !== lastInnerW) {
+                            iosKeyboardBottom = bottom;
+                        } else if (iosEditedCard !== iosComposer) {
+                            // The viewport can pan down just before beforeinput arrives.
+                            iosKeyboardBottom = Math.min(iosKeyboardBottom, bottom);
                         }
+                        // Keep the keyboard's original resting position. Cancel only
+                        // a downward move by the browser while composing.
+                        if (iosEditedCard === iosComposer) accessoryInset = Math.max(0, bottom - iosKeyboardBottom);
                     } else if (previousComposer || !editingComposer) {
                         iosEditedCard = null;
                         iosKeyboardBottom = 0;
@@ -41026,7 +41027,7 @@ function tavernFloorHeightRecall(key, width) {
                 setValue("--dsh-shell-height", shell || "100%");
                 setPx("--dsh-keyboard-inset", keyboardInset);
                 // 外壳高度已经按布局视口算的时候，可视区偏移由页面自己负责，不能再叠一次。
-                setPx("--dsh-vv-top", shell === "100%" ? 0 : top);
+                setPx("--dsh-vv-top", shellTop);
                 setPx("--dsh-vv-height", visible);
                 // 整个外壳使用可视区高度，输入条仍贴外壳底部，避免重复叠加键盘补偿。
                 setPx("--dsh-header-bottom", headerBottom);

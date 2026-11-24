@@ -3339,8 +3339,8 @@ body.dsh-tavern-shell-active [class*="_tabs"] [class*="_viewsMoreAnchor"] [class
     --dsh-composer-model-icon-display: block;
   }
   html.dsh-tavern-coarse-play [data-composer-card] [data-composer-input] { padding: 8px 6px 8px 4px; }
-  /* Keep the idle card floating. While editing, the viewport handler adds
-     only the part of the iOS toolbar inset that the browser has not applied. */
+  /* Keep the idle card floating and cancel downward iOS viewport movement
+     while typing above the keyboard toolbar. */
   html.dsh-tavern-ios-composer [data-composer-seat] {
     padding-bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + var(--dsh-keyboard-inset, 0px));
   }
