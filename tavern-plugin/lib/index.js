@@ -342,6 +342,7 @@ import { createChatJournalStore } from './domain/chat-journal-store.js'
 import { createResourceGraph } from './domain/resource-graph.js'
 import { normalizeBackgroundTasks, applyTavernSettingsPatch, conversationUsesExpandedCandidates, presentTavernSettings, resolveSystemPrompt } from './domain/tavern-settings.js'
 import { registerModelSamplingHook } from './hooks/model-sampling.js'
+import { registerSplashStartupHook } from './hooks/splash-startup.js'
 import { createSettingsTransfer } from './domain/settings-transfer.js'
 import { createSystemPromptDocuments } from './domain/system-prompt-documents.js'
 // Runtime reads go through runtimePrompt() so panel overrides apply; the raw
@@ -579,7 +580,7 @@ export function createContextHost({ pluginApi, chatForSession, recallHistoryForS
     dispose() { provider?.controller.abort(); provider = null; prepared.clear(); bindings.clear(); shared.clear() }
   })
 }
-export async function apply(ctx) {
+export async function apply(ctx, config) {
   const restoreHttpStreams = installHttpStreamPatch()
   ctx.effect(() => restoreHttpStreams)
   // 插件侧的联网请求（更新检查、插件市场、内置搜索）都走 fetch，
@@ -625,6 +626,9 @@ export async function apply(ctx) {
   await clearLegacyTavernDefault(ctx.get('settings'))
   const llm = ctx.get('llm')
   registerModelSamplingHook(ctx)
+  if (process.platform === 'darwin' && config?.splashProjectDir) {
+    registerSplashStartupHook(ctx, config.splashProjectDir)
+  }
   const agentRegistry = ctx.get('agents')
   const sessionStore = ctx.get('sessions')
   // New games are named after their card until the first turn (domain/game-titles.js).

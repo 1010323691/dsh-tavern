@@ -265,6 +265,10 @@ curl -fsSL 'https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@runtime-archive-ma
 
 OpenAI 兼容服务可在 **设置 → 模型 → 添加模型提供商 → 自定义模型 API** 中配置，协议选 **OpenAI Chat Completions** 或 **OpenAI Responses**，填写服务地址、API Key 和模型 ID。使用 Anthropic Messages 协议的第三方服务也可从这里添加。
 
+macOS 上可让酒馆按需启动 Splash。将自定义提供商 ID 设为 `splash`，API 地址设为 `http://127.0.0.1:8000/v1`，协议选 **OpenAI Chat Completions**。在本机配置 `~/.dsh-tavern/profiles/tavern/cordis.patch.yml` 中，为 `id: dsh-tavern` 的 `config` 设置 `splashProjectDir`，填入包含 `launcher/start.command` 的 Splash 项目绝对路径。本机需已缓存模型。
+
+重启酒馆后，发给 Splash 的请求会等待服务就绪。酒馆启动的 Splash 在推理空闲 30 分钟后卸载模型权重，下次请求会恢复权重。
+
 需要 shell 补全时运行 `dsh-tavern completion bash`（zsh/fish/powershell 同理），按输出注释启用；`dsh-tavern man` 输出 man 手册，可用 `dsh-tavern man > dsh-tavern.1` 保存，再用 `man ./dsh-tavern.1` 查看。
 
 双击启动时，可在仓库根目录的本机配置 `.dsh-tavern-local.json` 中设置 `"bindHost": "192.168.1.10"`，使用本机实际的局域网 IP。手机连到同一局域网后，打开启动脚本显示的完整地址。环境变量 `DSH_TAVERN_BIND` 可覆盖该设置。

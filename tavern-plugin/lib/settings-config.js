@@ -23,6 +23,10 @@ const fields = {
   // the profile refuses every save, so the global switch could never be turned on.
   [AUTO_CAST_SECTION]: z.transform(z.object(Object.fromEntries(Object.entries(AUTO_CAST_DEFAULTS).map(([key, value]) => [key, z.any().default(value)]))), value => validateAutoCastLayer(value, '$', Object.keys(AUTO_CAST_DEFAULTS)), true).default({ ...AUTO_CAST_DEFAULTS }).volatile(),
 }
-export const Config = z.object({ ...fields, [PLUGIN_SETTINGS_MARKER]: z.number().min(0).max(1).step(1).default(0).volatile() })
+export const Config = z.object({
+  ...fields,
+  splashProjectDir: z.string().default(''),
+  [PLUGIN_SETTINGS_MARKER]: z.number().min(0).max(1).step(1).default(0).volatile(),
+})
 export const importLegacyPluginSettings = (ctx, provider) => importLegacySettings(ctx, provider, fields)
 export const installPluginSettingsMigration = ctx => installSettingsMigration(ctx, fields)
