@@ -259,6 +259,10 @@ curl -fsSL 'https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@runtime-archive-ma
 
 装好后用 `dsh-tavern start` 启动，按显示的地址在浏览器打开；`dsh-tavern stop` / `status` / `update` 停止、查看、更新。用 `dsh-tavern --help` 查看全部命令，`dsh-tavern help install` 查看安装宿主说明。
 
+在 **设置 → 模型 → Claude Platform** 填写 Anthropic API Key。会话模型选择器提供 Claude Haiku 5.5 和 Claude Sonnet 5.5，可按会话选择思考强度。提供商设置可调整默认思考强度和提示缓存（关闭、5 分钟、1 小时）。Haiku 5.5 可关闭思考；Sonnet 5.5 的关闭选项关闭答复前思考，工具调用之间仍可能有思考。
+
+OpenAI 兼容服务可在 **设置 → 模型 → 添加模型提供商 → 自定义模型 API** 中配置，协议选 **OpenAI Chat Completions** 或 **OpenAI Responses**，填写服务地址、API Key 和模型 ID。使用 Anthropic Messages 协议的第三方服务也可从这里添加。
+
 需要 shell 补全时运行 `dsh-tavern completion bash`（zsh/fish/powershell 同理），按输出注释启用；`dsh-tavern man` 输出 man 手册，可用 `dsh-tavern man > dsh-tavern.1` 保存，再用 `man ./dsh-tavern.1` 查看。
 
 局域网 / VPN 绑定与安全要求见[命令行远程访问文档](https://github.com/flizzywine/dsh-tavern/wiki/命令行版：局域网与VPN访问)。

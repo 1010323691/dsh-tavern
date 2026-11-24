@@ -230,6 +230,31 @@ test('魔搭 Chat Completions 兼容 developer 角色，保留提示词和其他
   }
 })
 
+test('Claude Platform uses between_tools and automatic tool selection for Sonnet 5.5', async t => {
+  const seen = []
+  const target = { async fetch(_url, init) { seen.push(JSON.parse(init.body)); return new Response('{}') } }
+  t.after(installToolProtocolFetchPatch(target))
+  const url = 'https://api.anthropic.com/v1/messages?beta=true'
+  const body = {
+    model: 'claude-sonnet-5-5',
+    thinking: { type: 'disabled' },
+    tool_choice: { type: 'tool', name: 'submit_story' },
+    tools: [{ name: 'submit_story', input_schema: { type: 'object' } }]
+  }
+  const send = (endpoint, payload) => target.fetch(endpoint, { method: 'POST', body: JSON.stringify(payload) })
+  const expected = { ...body, thinking: { type: 'between_tools' }, tool_choice: { type: 'auto' } }
+  await send(url, body)
+  assert.deepEqual(seen.at(-1), expected)
+  await runWithToolProtocolDirective({ forceToolChoice: true, allowedToolNames: ['submit_story'] }, () => send(url, body))
+  assert.deepEqual(seen.at(-1), expected)
+
+  const haiku = { ...body, model: 'claude-haiku-5-5' }
+  await send(url, haiku)
+  assert.deepEqual(seen.at(-1), haiku)
+  await send('https://relay.example/v1/messages', body)
+  assert.deepEqual(seen.at(-1), body)
+})
+
 test('installToolCallIdleTimeoutPatch：开启「输出走工具调用」时将 pi-ai 与 DeepSeek 适配器静默超时下限上调到 600s', async (t) => {
   assert.equal(TOOL_CALL_STREAM_IDLE_TIMEOUT_MS, 600_000)
 

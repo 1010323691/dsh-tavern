@@ -434,9 +434,9 @@ async function ensureRuntimePatches(dsh, host) {
     if (!models || isAsarPath(models.directory)) return
     const patched = patchSettingsModelsEndpoints(models.directory)
     // A host whose 设置 › 模型 card changed shape is reported on every start, never dropped silently.
-    if (patched === null) console.log(`当前 DSH 的「设置 › 模型」与最近网址补丁不符（补丁按 ${SETTINGS_MODELS_PATCHED_VERSION} 写），已跳过；模型提供商暂时没有「最近用过的网址」。`)
-    else if (patched) console.log('已为 DSH「设置 › 模型」的 API 地址加上「最近用过的网址」。')
-  } catch (error) { console.log(`「设置 › 模型」最近网址补丁没有打上：${error?.message ?? error}`) }
+    if (patched === null) console.log(`当前 DSH 的「设置 › 模型」与酒馆模型设置补丁不符（补丁按 ${SETTINGS_MODELS_PATCHED_VERSION} 写），已跳过。`)
+    else if (patched) console.log('已补齐 DSH「设置 › 模型」的最近网址、Vertex 地区和 Claude Platform 选项。')
+  } catch (error) { console.log(`「设置 › 模型」的酒馆补丁没有打上：${error?.message ?? error}`) }
 }
 
 export function syncBundledTavernPlugins({

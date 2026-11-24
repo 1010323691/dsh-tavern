@@ -42,6 +42,27 @@
 # （@deepseek-ai/dsh-agent-presets 包在 0.2.0 已不存在）。新 Config 为
 # { default required, selectedDefault volatile }，没有 includeUserRoot 键：
 # 0.2.0 的 registry 不扫目录，preset 定义就是声明行，不声明就不出现在列表里。
+# Claude Platform uses the native Messages adapter. An explicit catalog limits the default picker.
+- id: llm-pi-ai
+  config:
+    providers:
+      anthropic:
+        displayName: Claude Platform
+        api: anthropic-messages
+        baseURL: https://api.anthropic.com
+        apiKeyEnv: ANTHROPIC_API_KEY
+        reasoning: low
+        cacheRetention: short
+        models:
+          - id: claude-haiku-5-5
+          - id: claude-sonnet-5-5
+            reasoningEfforts:
+              off: null
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+              max: max
 - id: agent-preset-registry
   config:
     default: tavern

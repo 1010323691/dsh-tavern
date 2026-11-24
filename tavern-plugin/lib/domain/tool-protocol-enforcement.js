@@ -15,6 +15,8 @@ const ALT_SENTINEL_BASE64 = Buffer.from(
 const BASE64_SIGNATURE_RE = /^[A-Za-z0-9+/]+={0,2}$/
 const AUTO_TOOL_ONLY_MODEL_RE = /^pg-/i
 const GEMINI_MODEL_RE = /gemini/i
+const CLAUDE_SONNET_55 = 'claude-sonnet-5-5'
+const CLAUDE_MESSAGES_URL = /^https:\/\/api\.anthropic\.com(?::443)?\/v1\/messages(?:\?|$)/i
 
 const directiveStorage = new AsyncLocalStorage()
 const capturedSignatures = new Map()
@@ -29,7 +31,7 @@ function str(value) {
 }
 
 export function isAutoToolOnlyModel(modelId) {
-  return AUTO_TOOL_ONLY_MODEL_RE.test(str(modelId).trim())
+  return modelId === CLAUDE_SONNET_55 || AUTO_TOOL_ONLY_MODEL_RE.test(str(modelId).trim())
 }
 
 export function isGeminiModelId(modelId) {
@@ -518,10 +520,20 @@ export function currentToolProtocolDirective() {
   return directiveStorage.getStore() || null
 }
 
+// Sonnet 5.5 accepts between_tools to suppress up-front thinking and only auto tool use.
+function adaptClaudePlatformPayload(body) {
+  if (body?.model !== CLAUDE_SONNET_55) return false
+  const suppressThinking = body.thinking?.type === 'disabled'
+  const forcedTool = ['tool', 'any'].includes(body.tool_choice?.type)
+  if (suppressThinking) body.thinking = { type: 'between_tools' }
+  if (forcedTool) body.tool_choice = { type: 'auto' }
+  return suppressThinking || forcedTool
+}
+
 /**
  * Install a ref-counted AsyncLocalStorage-scoped global fetch wrapper.
- * Tool directives apply only within `runWithToolProtocolDirective`; ModelScope
- * role compatibility applies to that endpoint on any call.
+ * Tool directives are scoped to their callers. Endpoint compatibility also
+ * applies to calls without a directive, including background model requests.
  */
 export function installToolProtocolFetchPatch(target = globalThis, { quirks = defaultCapabilityQuirks } = {}) {
   if (!target || typeof target.fetch !== 'function') return () => {}
@@ -535,7 +547,8 @@ export function installToolProtocolFetchPatch(target = globalThis, { quirks = de
       }
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : str(input?.url)
       const modelScope = /^https:\/\/api-inference\.modelscope\.cn(?::443)?\/v1\/chat\/completions(?:\?|$)/i.test(url)
-      if (!directive && !modelScope) return original.call(this, input, init)
+      const claudePlatform = CLAUDE_MESSAGES_URL.test(url)
+      if (!directive && !modelScope && !claudePlatform) return original.call(this, input, init)
       const method = str(init.method || (input && typeof input === 'object' ? input.method : 'GET')).toUpperCase()
       if (method !== 'POST') return original.call(this, input, init)
 
@@ -550,6 +563,9 @@ export function installToolProtocolFetchPatch(target = globalThis, { quirks = de
       // ModelScope's OpenAI-compatible endpoint accepts it as system.
       if (modelScope && Array.isArray(parsedBody?.messages) && parsedBody.messages.some(message => message?.role === 'developer')) {
         parsedBody.messages = parsedBody.messages.map(message => message?.role === 'developer' ? { ...message, role: 'system' } : message)
+        init = { ...init, body: JSON.stringify(parsedBody) }
+      }
+      if (claudePlatform && adaptClaudePlatformPayload(parsedBody)) {
         init = { ...init, body: JSON.stringify(parsedBody) }
       }
       if (!directive) return original.call(this, input, init)

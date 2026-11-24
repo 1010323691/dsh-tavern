@@ -9,7 +9,7 @@ import { createModelEndpoints } from '../tavern-plugin/packages/dsh-tavern-tts/s
 // The provider card's Base URL input and details fold as 0.2.1-rc.2 ships them, inside the editor's scope.
 const CARD = `function ProviderEditor(props) { const { namespace, settingsPath } = props; const keyRef = "X_API_KEY", keyDraft = "", disabled = false, fallback = props.fallback || {}, draft = props.draft || {}, probeApi = props.probeApi, stringAt = (s, k) => s[k];
   const ModelsSection_module_css_default = { field: "field-cls", fieldLabel: "label-cls", input: "input-cls" };
-  const setField = props.setField || (() => {});
+  const schema = { getPath: (value) => value }; const setField = props.setField || (() => {});
   return [props.credentialOnly === true ? null : (0, react_jsx_runtime.jsxs)("details", { children: [(0, react_jsx_runtime.jsx)("input", {
 										value: stringAt(draft, "baseURL") ?? "",
 										onChange: (event) => {
@@ -17,7 +17,7 @@ const CARD = `function ProviderEditor(props) { const { namespace, settingsPath }
 										}
 									}), "hint"] })] }`
 
-test('the card patch inserts endpoint-history and vertex-region once, is idempotent, upgrades legacy patches, and refuses unknown shapes', () => {
+test('the card patch inserts endpoint-history, vertex-region and Claude options once, is idempotent, upgrades legacy patches, and refuses unknown shapes', () => {
   const applied = patchSettingsModelsSource(CARD)
   assert.equal(applied.status, 'applied')
   assert.equal(patchSettingsModelsSource(applied.text).status, 'patched')
@@ -42,12 +42,12 @@ test('the card patch inserts endpoint-history and vertex-region once, is idempot
   const ModelEndpoints = () => {}
   const VertexRegionField = () => {}
   const props = { provider: 'relay', displayName: '中转', namespace: { ns: 'llm-pi-ai' }, settingsPath: ['providers', 'relay'], defaultBaseURL: 'https://api.example.com', onClose: v => rendered.push(['closed', v]) }
-  assert.deepEqual(run(jsx, props), [null, ['details', 'input', null, 'hint']])
+  assert.deepEqual(run(jsx, props), [null, null, ['details', 'input', null, 'hint']])
   globalThis[Symbol.for('dsh.endpointHistory')] = { ModelEndpoints }
   globalThis[Symbol.for('dsh.vertexRegion')] = { VertexRegionField }
   try {
     // Non-vertex provider does not render VertexRegionField.
-    assert.deepEqual(run(jsx, props), [null, ['details', 'input', 'picker', 'hint']])
+    assert.deepEqual(run(jsx, props), [null, null, ['details', 'input', 'picker', 'hint']])
     const [, given] = rendered.find(([type]) => type === ModelEndpoints)
     assert.deepEqual({ ...given, onSwitched: undefined }, { provider: 'relay', label: '中转', ns: 'llm-pi-ai', path: ['providers', 'relay'], keyRef: 'X_API_KEY', url: 'https://api.example.com', disabled: false, onSwitched: undefined })
     given.onSwitched(); assert.deepEqual(rendered.at(-1), ['closed', true])
@@ -62,7 +62,7 @@ test('the card patch inserts endpoint-history and vertex-region once, is idempot
       draft: { baseURL: 'https://aiplatform.googleapis.com/v1/projects/p1/locations/global' },
       setField: (k, v) => setCalls.push([k, v]),
     }
-    assert.deepEqual(run(jsx, vertexProps), ['vertex-region', ['details', 'input', 'picker', 'hint']])
+    assert.deepEqual(run(jsx, vertexProps), ['vertex-region', null, ['details', 'input', 'picker', 'hint']])
     const [, vGiven] = rendered.find(([type]) => type === VertexRegionField)
     assert.equal(vGiven.provider, 'google-vertex')
     assert.equal(vGiven.baseURL, 'https://aiplatform.googleapis.com/v1/projects/p1/locations/global')
@@ -75,7 +75,17 @@ test('the card patch inserts endpoint-history and vertex-region once, is idempot
 
     // Custom provider with probeApi === 'google-vertex' also renders VertexRegionField.
     rendered.length = 0
-    assert.deepEqual(run(jsx, { ...props, provider: 'my-vertex', probeApi: 'google-vertex' }), ['vertex-region', ['details', 'input', 'picker', 'hint']])
+    assert.deepEqual(run(jsx, { ...props, provider: 'my-vertex', probeApi: 'google-vertex' }), ['vertex-region', null, ['details', 'input', 'picker', 'hint']])
+    rendered.length = 0
+    run(jsx, { ...props, provider: 'anthropic', namespace: { ...props.namespace, base: { reasoning: 'low', cacheRetention: 'short' } },
+      draft: { reasoning: 'medium' }, setField: (key, value) => setCalls.push([key, value]) })
+    const controls = rendered.filter(([type]) => type === 'select').map(([, p]) => p)
+    assert.deepEqual(controls.map(p => p.value), ['medium', ''])
+    const optionLabels = rendered.filter(([type, p]) => type === 'option' && p.value === '').map(([, p]) => p.children)
+    assert.deepEqual(optionLabels, ['默认（低）', '默认（5 分钟）'])
+    controls[0].onChange({ target: { value: 'off' } })
+    controls[1].onChange({ target: { value: 'long' } })
+    assert.deepEqual(setCalls.slice(-2), [['reasoning', 'off'], ['cacheRetention', 'long']])
   } finally {
     delete globalThis[Symbol.for('dsh.endpointHistory')]
     delete globalThis[Symbol.for('dsh.vertexRegion')]

@@ -452,9 +452,9 @@ async function installProfileOwned(host, { attemptId, runInstall, runDsh, guiRoo
       try {
         const [models] = resolveHostDependencies({ dsh, host, requiredExports: { '@deepseek-ai/dsh-client-ui-settings-models': null } })
         const patched = isAsarPath(models.directory) ? null : patchSettingsModelsEndpoints(models.directory)
-        if (patched === null) console.log(`当前 DSH 的「设置 › 模型」与最近网址补丁不符（补丁按 ${SETTINGS_MODELS_PATCHED_VERSION} 写），已跳过。`)
-        else if (patched) console.log('已为 DSH「设置 › 模型」的 API 地址加上「最近用过的网址」。')
-      } catch (error) { console.log(`「设置 › 模型」最近网址补丁没有打上：${error?.message ?? error}`) }      if (!isAsarPath(deepseek.directory)) {
+        if (patched === null) console.log(`当前 DSH 的「设置 › 模型」与酒馆模型设置补丁不符（补丁按 ${SETTINGS_MODELS_PATCHED_VERSION} 写），已跳过。`)
+        else if (patched) console.log('已补齐 DSH「设置 › 模型」的最近网址、Vertex 地区和 Claude Platform 选项。')
+      } catch (error) { console.log(`「设置 › 模型」的酒馆补丁没有打上：${error?.message ?? error}`) }      if (!isAsarPath(deepseek.directory)) {
         const patched = patchDeepSeekStreamOption(deepseek.directory)
         if (patched === null) console.log('当前 DSH 的 DeepSeek 适配器与流式设置补丁不符，已跳过；非流式仍在响应完成后一次性显示。')
         else if (patched) console.log('已为 DeepSeek 适配器启用流式/非流式请求切换。')
