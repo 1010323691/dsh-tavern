@@ -243,6 +243,69 @@ test('iOS 键盘收起后把残留的页面平移归零', () => {
   release()
 })
 
+test('iOS 的 innerHeight 跟着键盘缩短时，外壳仍按初始包含块锁到可视区', () => {
+  const { doc, harness, style, release } = installPin({ userAgent: 'iPhone' })
+  doc.documentElement.clientHeight = 800
+  const editor = { nodeType: 1, tagName: 'TEXTAREA', inComposer: true }
+  doc.activeElement = editor
+  doc.dispatch('focusin', { target: editor })
+  // Safari 把 innerHeight 报成可视区高度，页面同时被卷上去 350，固定定位仍按 800 高的初始包含块排。
+  harness.view.innerHeight = 450
+  harness.vv.height = 450
+  harness.vv.offsetTop = 350
+  harness.vv.dispatch('resize')
+  assert.equal(style.getPropertyValue('--dsh-shell-height'), '450px', '不能当成布局视口已经变短')
+  assert.equal(style.getPropertyValue('--dsh-vv-top'), '350px', '外壳跟着可视区下移，顶栏不被卷出屏幕')
+  assert.equal(doc.documentElement.classList.contains('dsh-tavern-ios-composer-keyboard'), true)
+  release()
+})
+
+function makeTailGuard() {
+  const listeners = new Map()
+  const doc = {
+    defaultView: {},
+    addEventListener: (name, handler, options) => listeners.set(name + (options?.capture ? ':capture' : ''), handler),
+    removeEventListener: (name, _handler, options) => listeners.delete(name + (options?.capture ? ':capture' : ''))
+  }
+  const clock = { now: 10000 }
+  const factory = vm.runInNewContext(`${layoutSource}\n;({ installTavernTailGuard })`, { Date: { now: () => clock.now } })
+  const release = factory.installTavernTailGuard(doc)
+  let following = true
+  const scroller = {
+    scrollTop: 3000, scrollHeight: 3400, clientHeight: 400,
+    hasAttribute: name => name === 'data-conversation-scroll',
+    querySelector: selector => selector === '[data-chat-following-tail]' && following ? {} : null
+  }
+  const scroll = top => { scroller.scrollTop = top; listeners.get('scroll:capture')({ target: scroller }) }
+  const input = (name, target = { closest: () => null }) => listeners.get(name + ':capture')({ target })
+  return { scroller, scroll, input, clock, release, listeners, setFollowing: value => { following = value } }
+}
+
+test('iOS 跟随最新时，浏览器自己把聊天往上推会在同一次滚动事件里放回底部', () => {
+  const guard = makeTailGuard()
+  guard.scroll(3000)
+  guard.scroll(2300)
+  assert.equal(guard.scroller.scrollTop, 3000, '没有读者手势的上跳放回底部')
+
+  guard.input('pointerdown', { closest: selector => selector === '[data-composer-seat]' ? {} : null })
+  guard.scroll(2400)
+  assert.equal(guard.scroller.scrollTop, 3000, '点输入框、发送不算读者滚动')
+
+  guard.scroller.scrollHeight = 3200
+  guard.scroll(2790)
+  assert.equal(guard.scroller.scrollTop, 2790, '内容变短时浏览器夹到新的底部，不再干预')
+
+  guard.input('touchstart')
+  guard.scroll(2000)
+  assert.equal(guard.scroller.scrollTop, 2000, '读者自己往上翻')
+  guard.clock.now += 1500
+  guard.setFollowing(false)
+  guard.scroll(1500)
+  assert.equal(guard.scroller.scrollTop, 1500, '离开最新后不管')
+  guard.release()
+  assert.equal(guard.listeners.size, 0)
+})
+
 test('iOS 同步缩小布局与可视区时，逐帧变化仍能识别键盘', () => {
   const { doc, harness, release } = installPin({ userAgent: 'iPhone' })
   const opened = () => doc.documentElement.classList.contains('dsh-tavern-ios-composer-keyboard')

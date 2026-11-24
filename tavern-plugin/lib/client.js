@@ -40873,6 +40873,49 @@ function tavernFloorHeightRecall(key, width) {
             return Math.round(Math.max(0, Math.min(shell - top, height)));
         }
 
+        // Reader input that may move the chat; taps and typing in the composer do not.
+        const TAVERN_TAIL_INTENT_EVENTS = ["touchstart", "touchmove", "wheel", "pointerdown", "keydown"];
+        const TAVERN_TAIL_INTENT_MS = 1000;
+        // Distance from the floor that still counts as following the latest reply.
+        const TAVERN_TAIL_SLACK = 48;
+
+        // iOS WebKit moves the chat scroller by itself while the composer gains focus,
+        // the keyboard settles, or a sent message replaces rows: the host has just
+        // landed on the floor, then the scroller jumps hundreds of pixels up with no
+        // script asking for it, and the host takes that as the reader leaving the
+        // tail. While the host follows the tail and the reader has not touched or
+        // scrolled anything, put an upward jump back on the floor inside the same
+        // scroll event, before it is painted.
+        function installTavernTailGuard(doc) {
+            const view = doc && doc.defaultView;
+            if (!view || typeof doc.addEventListener !== "function") return function () {};
+            const tops = new WeakMap();
+            let lastIntent = 0;
+            function intent(event) {
+                if (event.target?.closest?.("[data-composer-seat]")) return;
+                lastIntent = Date.now();
+            }
+            function onScroll(event) {
+                const scroller = event.target;
+                if (!scroller || typeof scroller.hasAttribute !== "function" || !scroller.hasAttribute("data-conversation-scroll")) return;
+                const top = scroller.scrollTop;
+                const before = tops.has(scroller) ? tops.get(scroller) : top;
+                tops.set(scroller, top);
+                if (top >= before || Date.now() - lastIntent < TAVERN_TAIL_INTENT_MS) return;
+                if (!scroller.querySelector("[data-chat-following-tail]")) return;
+                const floor = scroller.scrollHeight - scroller.clientHeight;
+                if (floor - top <= TAVERN_TAIL_SLACK) return;
+                scroller.scrollTop = floor;
+                tops.set(scroller, scroller.scrollTop);
+            }
+            for (const name of TAVERN_TAIL_INTENT_EVENTS) doc.addEventListener(name, intent, { capture: true, passive: true });
+            doc.addEventListener("scroll", onScroll, { capture: true, passive: true });
+            return function () {
+                for (const name of TAVERN_TAIL_INTENT_EVENTS) doc.removeEventListener(name, intent, { capture: true });
+                doc.removeEventListener("scroll", onScroll, { capture: true });
+            };
+        }
+
         function installVisualViewportPin(doc) {
             const view = doc && doc.defaultView;
             if (!view || !doc.documentElement) return function () {};
@@ -40884,6 +40927,7 @@ function tavernFloorHeightRecall(key, width) {
                 (navigator?.platform === "MacIntel" && navigator.maxTouchPoints > 1);
             const narrow = view.matchMedia(TAVERN_MOBILE_QUERY);
             const touch = view.matchMedia("(pointer: coarse)");
+            const releaseTailGuard = ios ? installTavernTailGuard(doc) : function () {};
             const properties = ["--dsh-vv-top", "--dsh-vv-height", "--dsh-shell-height", "--dsh-keyboard-inset", "--dsh-composer-offset", "--dsh-sheet-max", "--dsh-header-bottom", "--dsh-composer-left", "--dsh-composer-width"];
             const previous = properties.map(name => [name, html.style.getPropertyValue(name), html.style.getPropertyPriority(name)]);
             let frame = 0, chaseFrame = 0, chaseUntil = 0, disposed = false, seat = null, card = null, header = null, boxDirty = true;
@@ -40930,8 +40974,17 @@ function tavernFloorHeightRecall(key, width) {
                 // A capped seat keeps its own box size while content grows, so watch its children too.
                 if (seat && seat.children) for (const child of seat.children) observer?.observe(child);
             }
+            // iOS Safari shrinks innerHeight to the visual viewport while the keyboard is
+            // open, but fixed elements still lay out against the full initial containing
+            // block (documentElement.clientHeight) and the page scrolls under them. Only
+            // that block tells whether the layout viewport really got shorter.
+            function layoutViewportHeight() {
+                const inner = Number(view.innerHeight) || 0;
+                if (!ios) return inner;
+                return Math.max(inner, Number(html.clientHeight) || 0);
+            }
             function snapshotChanged() {
-                const innerH = Number(view.innerHeight) || 0;
+                const innerH = layoutViewportHeight();
                 const innerW = Number(view.innerWidth) || 0;
                 const vvH = vv ? Number(vv.height) || 0 : innerH;
                 const vvTop = vv ? Number(vv.offsetTop) || 0 : 0;
@@ -40941,7 +40994,7 @@ function tavernFloorHeightRecall(key, width) {
                 return boxDirty || innerH !== lastInnerH || innerW !== lastInnerW || vvH !== lastVvH || vvTop !== lastVvTop || kbTop !== lastKbTop || kbH !== lastKbH;
             }
             function recordSnapshot() {
-                const innerH = Number(view.innerHeight) || 0;
+                const innerH = layoutViewportHeight();
                 lastInnerH = innerH;
                 lastInnerW = Number(view.innerWidth) || 0;
                 lastVvH = vv ? Number(vv.height) || 0 : innerH;
@@ -40973,7 +41026,8 @@ function tavernFloorHeightRecall(key, width) {
                 // 双指缩放时保留原布局供用户平移查看；不能把缩放误判成软键盘。
                 if (vv && Math.abs(vv.scale - 1) > 0.02) return;
                 rebind();
-                const height = vv ? vv.height : view.innerHeight;
+                const layoutViewport = layoutViewportHeight();
+                const height = vv ? vv.height : layoutViewport;
                 const top = vv ? vv.offsetTop : 0;
                 if (!(height > 0)) return;
                 // 先一次性批量读完所有几何属性，再统一写 CSS 变量与类名：
@@ -40986,11 +41040,11 @@ function tavernFloorHeightRecall(key, width) {
                 const bounds = activeCard ? (activeCard === pin ? pinRect : activeCard.getBoundingClientRect()) : null;
                 const seatScroll = Boolean(seat && seat.scrollHeight > seat.clientHeight + 1);
                 // 外壳高度：布局视口已被顶上去就 100%，键盘浮在页面上才用可视区像素。
-                const shell = tavernShellHeight(view.innerHeight, height);
+                const shell = tavernShellHeight(layoutViewport, height);
                 // 外壳真占多高：100% 时由布局视口决定，否则就是脚本算出来的那一段。
-                const shellHeight = shell && shell !== "100%" ? parseFloat(shell) : view.innerHeight || height;
+                const shellHeight = shell && shell !== "100%" ? parseFloat(shell) : layoutViewport || height;
                 // 剩下的差额交给输入条自己垫：键盘压住多少就抬多少，外壳不用再动。
-                const layoutHeight = view.innerHeight || height;
+                const layoutHeight = layoutViewport || height;
                 const editingComposer = Boolean(iosPhone && card && doc.activeElement && card.contains(doc.activeElement) && isKeyboardTarget(doc.activeElement));
                 const idleHeight = (Number(view.innerWidth) || 0) === lastInnerW ? Math.max(layoutHeight, iosIdleHeight) : layoutHeight;
                 const iosKeyboardOpen = iosPhone && (layoutHeight - height >= TAVERN_IOS_KEYBOARD_MIN ||
@@ -41103,7 +41157,7 @@ function tavernFloorHeightRecall(key, width) {
             }
             function onViewportScroll() {
                 if (snapshotChanged()) sync();
-                const layout = Number(view.innerHeight) || 0;
+                const layout = layoutViewportHeight();
                 const visual = vv && vv.height > 0 ? Number(vv.height) : layout;
                 if (Math.round(layout - visual) >= TAVERN_KEYBOARD_INSET_MIN) chaseFor(TAVERN_KEYBOARD_SETTLE_MS);
             }
@@ -41153,6 +41207,7 @@ function tavernFloorHeightRecall(key, width) {
             sync();
             return function () {
                 disposed = true;
+                releaseTailGuard();
                 if (frame) view.cancelAnimationFrame(frame);
                 if (chaseFrame) view.cancelAnimationFrame(chaseFrame);
                 observer?.disconnect();
