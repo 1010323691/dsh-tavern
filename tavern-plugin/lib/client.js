@@ -17519,8 +17519,9 @@ window.__ModuleLoader__.load({
         const scrollKeys = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown"]);
         // Hosts without a page (tests loading the bundle in a bare context) have no events.
         if (typeof window !== "undefined" && typeof window.addEventListener === "function") for (const type of ["wheel", "touchmove", "keydown", "pointerdown"]) window.addEventListener(type, function (event) {
-            // Typing in the composer is not scrolling.
-            if (type === "keydown" && (!scrollKeys.has(event.key) || event.target && event.target.closest && event.target.closest("input, textarea, [contenteditable]:not([contenteditable=\"false\"])"))) return;
+            // Sending or editing a draft must not authorize loading older floors during a resize.
+            if (event.target?.closest?.("[data-composer-seat]")) return;
+            if (type === "keydown" && (!scrollKeys.has(event.key) || event.target?.closest?.("input, textarea, [contenteditable]:not([contenteditable=\"false\"])"))) return;
             lastScrollIntentAt = Date.now();
             for (const waiter of [...scrollIntentWaiters]) waiter();
         }, { capture: true, passive: true });
@@ -46122,7 +46123,7 @@ function createTavernStoryRowWindow(notify) {
 	const supported = typeof IntersectionObserver === 'function' && typeof ResizeObserver === 'function'
 	// 读者眼前的那一行（滚动区顶边下的第一行）和它离顶边多远。
 	function capture() {
-		if (anchor || !root || !root.isConnected) return
+		if (anchor || !root?.isConnected || root.querySelector('[data-chat-following-tail]')) return
 		const top = root.getBoundingClientRect().top
 		const jumpToken = typeof root.getAttribute === 'function' ? (root.getAttribute('data-story-jump-token') || '') : ''
 		for (const row of root.querySelectorAll('[data-story-row][data-row-key]')) {
@@ -46202,10 +46203,12 @@ function createTavernStoryRowWindow(notify) {
 		},
 		remember(key, text) { chars.set(key, text.length) },
 		// 提交之后、绘制之前：把读者眼前那一行挪回原来的位置。
-		restore() {
+		restore(submitted) {
 			const held = anchor
 			anchor = null
-			if (!held || !root || !root.isConnected) return
+			// The host follows a new player message. A resize during send can
+			// still have captured an older floor before the host changed modes.
+			if (!held || submitted || !root?.isConnected || root.querySelector('[data-chat-following-tail]')) return
 			const jumpToken = typeof root.getAttribute === 'function' ? (root.getAttribute('data-story-jump-token') || '') : ''
 			if (jumpToken !== held.jumpToken) return
 			const row = root.querySelector('[data-row-key="' + CSS.escape(held.key) + '"]')
@@ -46222,15 +46225,19 @@ function createTavernStoryRowWindow(notify) {
 	}
 }
 
-function useTavernStoryRowWindow(sessionId) {
+function useTavernStoryRowWindow(sessionId, latestInputKey) {
 	const [, setVersion] = React.useState(0)
 	const holder = React.useRef(null)
 	if (!holder.current || holder.current.sessionId !== sessionId) {
 		holder.current?.window.dispose()
-		holder.current = { sessionId: sessionId, window: createTavernStoryRowWindow(function () { setVersion(function (value) { return value + 1 }) }) }
+		holder.current = { sessionId, latestInputKey, window: createTavernStoryRowWindow(function () { setVersion(function (value) { return value + 1 }) }) }
 	}
 	React.useEffect(function () { return function () { holder.current?.window.dispose() } }, [])
-	React.useLayoutEffect(function () { holder.current.window.restore() })
+	React.useLayoutEffect(function () {
+		const current = holder.current
+		current.window.restore(latestInputKey != null && latestInputKey !== current.latestInputKey)
+		current.latestInputKey = latestInputKey
+	})
 	// 舞台盖住这一局时（gal-stage-active.cjs），被盖住的楼层收起；离开舞台时按读者位置挂回。
 	const covered = React.useSyncExternalStore(
 		typeof galActive === 'undefined' ? function () { return function () {} } : galActive.subscribe,
@@ -46858,7 +46865,8 @@ function createTavernStoryTranscriptFeature(deps) {
 		}, [transcript, partial, props.runningCalls, props.pendingInputs, cached.turn, cached.nativeTurn, allowCommitted, streamLive, summarizedReasoning.text, summarizedReasoning.live, storyStreamUid, regeneratingTarget, regeneratingStoryTurn, regenDamperOutcome, activeLiveDamper, draftDamperOutcome])
 		const latest = rows.findLast(row => row.role === 'assistant')
 		const generating = Boolean(props.partial || streamView?.regenInProgress || (props.running && rows.at(-1)?.role === 'user'))
-		const rowWindow = useTavernStoryRowWindow(sessionId)
+		const latestInput = rows.findLast(row => row.role === 'user')
+		const rowWindow = useTavernStoryRowWindow(sessionId, latestInput?.requestId || latestInput?.key)
 		const placedNative = React.useMemo(function () {
 			return placeStoryNativeNodes(rows, props.nativeFlowNodes, props.nativeTurns, transcript && transcript.from)
 		}, [rows, props.nativeFlowNodes, props.nativeTurns, transcript && transcript.from])
@@ -70744,6 +70752,9 @@ cardLibraryFeature.register({ ctx: ctx, appendMention: appendMention });
 		function tavernReplyReveal(row, options) {
 		    const host = options && options.host || (typeof window !== "undefined" ? window : null);
 		    if (!host || typeof host.requestAnimationFrame !== "function" || !row) return function () {};
+		    // On iOS the keyboard and scrollport can still be settling when a whole
+		    // reply lands. Keep the host's tail-following instead of jumping upward.
+		    if (host.document.documentElement?.classList.contains("dsh-tavern-ios-composer")) return function () {};
 		    const scroller = tavernReplyRevealScroller(row, host);
 		    if (!scroller) return function () {};
 		    const padding = options && Number.isFinite(options.padding) ? options.padding : 24;

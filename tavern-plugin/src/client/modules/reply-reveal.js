@@ -44,6 +44,9 @@ function tavernReplyRevealVisible(row) {
 function tavernReplyReveal(row, options) {
     const host = options && options.host || (typeof window !== "undefined" ? window : null);
     if (!host || typeof host.requestAnimationFrame !== "function" || !row) return function () {};
+    // On iOS the keyboard and scrollport can still be settling when a whole
+    // reply lands. Keep the host's tail-following instead of jumping upward.
+    if (host.document.documentElement?.classList.contains("dsh-tavern-ios-composer")) return function () {};
     const scroller = tavernReplyRevealScroller(row, host);
     if (!scroller) return function () {};
     const padding = options && Number.isFinite(options.padding) ? options.padding : 24;

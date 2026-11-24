@@ -76,6 +76,54 @@ async function mount(page, element) {
 	return root
 }
 
+test('故事楼层只恢复主动阅读的锚点，发送或跟随最新时不抢滚动位置', async t => {
+	const callbacks = []
+	const page = createPage(t, {
+		CSS: { escape: value => value },
+		IntersectionObserver: class {
+			constructor(callback) { callbacks.push(callback) }
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		},
+		ResizeObserver: class { observe() {} disconnect() {} }
+	})
+	const root = page.dom.window.document.querySelector('main')
+	root.setAttribute('data-conversation-scroll', '')
+	root.innerHTML = '<section><article data-story-row data-row-key="floor-1"></article></section>'
+	const transcript = root.firstElementChild
+	const row = transcript.firstElementChild
+	root.getBoundingClientRect = () => ({ top: 0 })
+	let position = 20
+	row.getBoundingClientRect = () => ({ top: position, bottom: position + 200 })
+	const window = page.context.createTavernStoryRowWindow(() => {})
+	t.after(() => window.dispose())
+	window.refFor('floor-1')(row)
+	const visibility = visible => callbacks[0]([{ target: row, isIntersecting: visible }])
+
+	visibility(true)
+	position = 90
+	window.restore()
+	assert.equal(root.scrollTop, 70, '翻阅历史时保留眼前楼层')
+
+	visibility(false)
+	position = 160
+	window.restore(true)
+	assert.equal(root.scrollTop, 70, '新的发送记录优先于观测器的旧锚点')
+
+	visibility(true)
+	position = 230
+	transcript.setAttribute('data-chat-following-tail', '')
+	window.restore()
+	assert.equal(root.scrollTop, 70, '回复结束时仍跟随最新')
+
+	visibility(false)
+	transcript.removeAttribute('data-chat-following-tail')
+	position = 300
+	window.restore()
+	assert.equal(root.scrollTop, 70, '跟随最新期间不会缓存旧锚点')
+})
+
 test('楼层操作用故事正文和稳定轮次，回退提交确认过的消息 UID', async t => {
 	const calls = []
 	const button = (label, value) => React.createElement('button', { 'aria-label': label }, value)

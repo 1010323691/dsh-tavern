@@ -97,7 +97,7 @@ function createTavernStoryRowWindow(notify) {
 	const supported = typeof IntersectionObserver === 'function' && typeof ResizeObserver === 'function'
 	// 读者眼前的那一行（滚动区顶边下的第一行）和它离顶边多远。
 	function capture() {
-		if (anchor || !root || !root.isConnected) return
+		if (anchor || !root?.isConnected || root.querySelector('[data-chat-following-tail]')) return
 		const top = root.getBoundingClientRect().top
 		const jumpToken = typeof root.getAttribute === 'function' ? (root.getAttribute('data-story-jump-token') || '') : ''
 		for (const row of root.querySelectorAll('[data-story-row][data-row-key]')) {
@@ -177,10 +177,12 @@ function createTavernStoryRowWindow(notify) {
 		},
 		remember(key, text) { chars.set(key, text.length) },
 		// 提交之后、绘制之前：把读者眼前那一行挪回原来的位置。
-		restore() {
+		restore(submitted) {
 			const held = anchor
 			anchor = null
-			if (!held || !root || !root.isConnected) return
+			// The host follows a new player message. A resize during send can
+			// still have captured an older floor before the host changed modes.
+			if (!held || submitted || !root?.isConnected || root.querySelector('[data-chat-following-tail]')) return
 			const jumpToken = typeof root.getAttribute === 'function' ? (root.getAttribute('data-story-jump-token') || '') : ''
 			if (jumpToken !== held.jumpToken) return
 			const row = root.querySelector('[data-row-key="' + CSS.escape(held.key) + '"]')
@@ -197,15 +199,19 @@ function createTavernStoryRowWindow(notify) {
 	}
 }
 
-function useTavernStoryRowWindow(sessionId) {
+function useTavernStoryRowWindow(sessionId, latestInputKey) {
 	const [, setVersion] = React.useState(0)
 	const holder = React.useRef(null)
 	if (!holder.current || holder.current.sessionId !== sessionId) {
 		holder.current?.window.dispose()
-		holder.current = { sessionId: sessionId, window: createTavernStoryRowWindow(function () { setVersion(function (value) { return value + 1 }) }) }
+		holder.current = { sessionId, latestInputKey, window: createTavernStoryRowWindow(function () { setVersion(function (value) { return value + 1 }) }) }
 	}
 	React.useEffect(function () { return function () { holder.current?.window.dispose() } }, [])
-	React.useLayoutEffect(function () { holder.current.window.restore() })
+	React.useLayoutEffect(function () {
+		const current = holder.current
+		current.window.restore(latestInputKey != null && latestInputKey !== current.latestInputKey)
+		current.latestInputKey = latestInputKey
+	})
 	// 舞台盖住这一局时（gal-stage-active.cjs），被盖住的楼层收起；离开舞台时按读者位置挂回。
 	const covered = React.useSyncExternalStore(
 		typeof galActive === 'undefined' ? function () { return function () {} } : galActive.subscribe,
@@ -833,7 +839,8 @@ function createTavernStoryTranscriptFeature(deps) {
 		}, [transcript, partial, props.runningCalls, props.pendingInputs, cached.turn, cached.nativeTurn, allowCommitted, streamLive, summarizedReasoning.text, summarizedReasoning.live, storyStreamUid, regeneratingTarget, regeneratingStoryTurn, regenDamperOutcome, activeLiveDamper, draftDamperOutcome])
 		const latest = rows.findLast(row => row.role === 'assistant')
 		const generating = Boolean(props.partial || streamView?.regenInProgress || (props.running && rows.at(-1)?.role === 'user'))
-		const rowWindow = useTavernStoryRowWindow(sessionId)
+		const latestInput = rows.findLast(row => row.role === 'user')
+		const rowWindow = useTavernStoryRowWindow(sessionId, latestInput?.requestId || latestInput?.key)
 		const placedNative = React.useMemo(function () {
 			return placeStoryNativeNodes(rows, props.nativeFlowNodes, props.nativeTurns, transcript && transcript.from)
 		}, [rows, props.nativeFlowNodes, props.nativeTurns, transcript && transcript.from])

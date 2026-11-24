@@ -75,3 +75,15 @@ test('reader input stops the short hold loop', async () => {
   assert.equal(scroller.scrollTop, 3200)
   assert.equal(host.frames(), 0)
 })
+
+test('iOS keeps the latest position when a whole reply lands', async () => {
+  const client = await loadClient()
+  const scroller = scrollport()
+  const row = replyRow(scroller)
+  const host = fakeHost()
+  host.document.documentElement = { classList: { contains: name => name === 'dsh-tavern-ios-composer' } }
+  client.tavernReplyReveal(row, { host })
+  host.flush()
+  assert.equal(scroller.scrollTop, 3600)
+  assert.equal(host.frames(), 0)
+})
