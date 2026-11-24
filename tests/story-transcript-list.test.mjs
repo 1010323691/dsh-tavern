@@ -124,6 +124,43 @@ test('故事楼层只恢复主动阅读的锚点，发送或跟随最新时不�
 	assert.equal(root.scrollTop, 70, '跟随最新期间不会缓存旧锚点')
 })
 
+test('新回复开始时，刚进入楼层窗口的在读楼层先保持展开', async t => {
+	const callbacks = []
+	const page = createPage(t, {
+		CSS: { escape: value => value },
+		IntersectionObserver: class {
+			constructor(callback) { callbacks.push(callback) }
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		},
+		ResizeObserver: class { observe() {} disconnect() {} }
+	})
+	const root = page.dom.window.document.querySelector('main')
+	root.setAttribute('data-conversation-scroll', '')
+	root.innerHTML = '<article data-story-row data-row-key="floor-9"></article>'
+	const row = root.firstElementChild
+	root.getBoundingClientRect = () => ({ top: 0 })
+	row.getBoundingClientRect = () => ({ top: 40, bottom: 900 })
+	let notified = 0
+	const window = page.context.createTavernStoryRowWindow(() => { notified++ })
+	t.after(() => window.dispose())
+
+	assert.equal(window.near('floor-9'), false, '从未画过的远处楼层照常收起')
+	window.shown('floor-9')
+	assert.equal(window.near('floor-9'), true, '画过全文的楼层在观测前不收起')
+	window.refFor('floor-9')(row)
+	callbacks[0]([{ target: row, isIntersecting: true }])
+	await Promise.resolve()
+	assert.equal(notified, 0, '观测结果与当前一致时不重绘')
+	assert.equal(window.near('floor-9'), true)
+
+	callbacks[0]([{ target: row, isIntersecting: false }])
+	await Promise.resolve()
+	assert.equal(window.near('floor-9'), false)
+	assert.equal(notified, 1, '离开视口后才收起')
+})
+
 test('楼层操作用故事正文和稳定轮次，回退提交确认过的消息 UID', async t => {
 	const calls = []
 	const button = (label, value) => React.createElement('button', { 'aria-label': label }, value)

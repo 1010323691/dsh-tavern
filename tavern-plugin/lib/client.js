@@ -46105,7 +46105,10 @@ function TavernStoryMarkdown(props) {
 const TAVERN_STORY_ROW_MARGIN = '150% 0px'
 
 function createTavernStoryRowWindow(notify) {
-	const near = new Set(), measured = new Map(), estimated = new Map(), chars = new Map(), elements = new Map(), refs = new Map()
+	// fresh: floors drawn in full before the window could hold them (the latest two
+	// floors). They stay mounted until the observer has seen them once, so a new
+	// reply never swaps the floor being read for a placeholder.
+	const near = new Set(), fresh = new Set(), measured = new Map(), estimated = new Map(), chars = new Map(), elements = new Map(), refs = new Map()
 	let observer = null, root = null, resizer = null, pending = false, disposed = false, anchor = null
 	const supported = typeof IntersectionObserver === 'function' && typeof ResizeObserver === 'function'
 	// 读者眼前的那一行（滚动区顶边下的第一行）和它离顶边多远。
@@ -46130,11 +46133,11 @@ function createTavernStoryRowWindow(notify) {
 			for (const entry of entries) {
 				const key = entry.target.getAttribute('data-row-key')
 				if (!key || elements.get(key) !== entry.target) continue
-				if (entry.isIntersecting !== near.has(key)) {
-					moved = true
-					if (entry.isIntersecting) near.add(key)
-					else near.delete(key)
-				}
+				const was = near.has(key) || fresh.has(key)
+				fresh.delete(key)
+				if (entry.isIntersecting) near.add(key)
+				else near.delete(key)
+				if (entry.isIntersecting !== was) moved = true
 			}
 			if (moved) changed()
 		}, { root: root, rootMargin: TAVERN_STORY_ROW_MARGIN })
@@ -46175,7 +46178,9 @@ function createTavernStoryRowWindow(notify) {
 			if (!refs.has(key)) refs.set(key, function (element) { if (!disposed) watch(key, element) })
 			return refs.get(key)
 		},
-		near(key) { return near.has(key) },
+		near(key) { return near.has(key) || fresh.has(key) },
+		// A floor drawn in full outside the window; its first observation decides.
+		shown(key) { if (!near.has(key)) fresh.add(key) },
 		// 收起的楼层的高度：量过的用量到的；没量过的按已量楼层每字多高来估（一层都没量过时每字 1.5px），
 		// 估过一次就不再随别的楼层变，免得每次重绘都挪动读者上方的内容。
 		height(key, text) {
@@ -46207,7 +46212,7 @@ function createTavernStoryRowWindow(notify) {
 			disposed = true
 			observer?.disconnect()
 			resizer?.disconnect()
-			elements.clear(); near.clear()
+			elements.clear(); near.clear(); fresh.clear()
 		}
 	}
 }
@@ -46898,6 +46903,7 @@ function createTavernStoryTranscriptFeature(deps) {
 					h('span', { className: 'dsh-tavern-story-floor-no' }, '第 ' + String(row.floorNo) + ' 楼'))))
 			} else {
 				if (windowed(row)) rowWindow.window.remember(row.key, text)
+				else if (row.role === 'assistant') rowWindow.window.shown(row.key)
 				items.push(h(StoryTranscriptRow, { windowRef: windowed(row) ? rowWindow.window.refFor(row.key) : undefined, key: renderKey, row: row, transcript: transcript, markdown: renderText, running: storyBusy,
 					sessionId: sessionId, view: projectionView, storyView: props.view, helperView: helperView, executeSlash: props.executeSlash, frameOwner: props.frameOwner,
 					showPlayProcess: props.showPlayProcess, showStreamReasoning: showStreamReasoning, showDamperStatus: props.showDamperStatus, useChat: props.useChat,
