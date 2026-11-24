@@ -35,3 +35,6 @@ tavern-plugin/packages/dsh-dream-skin/lib/*.js -text -whitespace linguist-vendor
 
 # cmd.exe needs CRLF; GitHub downloads serve the stored bytes, so store them as-is.
 *.cmd -text
+
+launch/mac/*.command text eol=lf
+launch/windows/*.bat -text whitespace=cr-at-eol

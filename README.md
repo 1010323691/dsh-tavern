@@ -259,6 +259,8 @@ curl -fsSL 'https://cdn.jsdelivr.net/gh/flizzywine/dsh-tavern@runtime-archive-ma
 
 装好后用 `dsh-tavern start` 启动，按显示的地址在浏览器打开；`dsh-tavern stop` / `status` / `update` 停止、查看、更新。用 `dsh-tavern --help` 查看全部命令，`dsh-tavern help install` 查看安装宿主说明。
 
+从源码运行时，macOS 可双击 `launch/mac/` 下的「启动 DSH Tavern」或「停止 DSH Tavern」，Windows 的同名脚本在 `launch/windows/`，Linux 可执行 `launch/linux/start.sh` 和 `launch/linux/stop.sh`。首次启动会安装仓库依赖和命令行版运行时，之后会启动服务并打开浏览器。关闭启动窗口后，服务会继续运行。
+
 在 **设置 → 模型 → Claude Platform** 填写 Anthropic API Key。会话模型选择器提供 Claude Haiku 5.5 和 Claude Sonnet 5.5，可按会话选择思考强度。提供商设置可调整默认思考强度和提示缓存（关闭、5 分钟、1 小时）。Haiku 5.5 可关闭思考；Sonnet 5.5 的关闭选项关闭答复前思考，工具调用之间仍可能有思考。
 
 OpenAI 兼容服务可在 **设置 → 模型 → 添加模型提供商 → 自定义模型 API** 中配置，协议选 **OpenAI Chat Completions** 或 **OpenAI Responses**，填写服务地址、API Key 和模型 ID。使用 Anthropic Messages 协议的第三方服务也可从这里添加。
