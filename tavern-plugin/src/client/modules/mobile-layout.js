@@ -9,7 +9,9 @@ const TAVERN_KEYBOARD_INSET_MIN = 8;
 const TAVERN_KEYBOARD_SETTLE_MS = 450;
 // Browser chrome can move without opening the keyboard.
 const TAVERN_IOS_KEYBOARD_MIN = 96;
-const TAVERN_IOS_EDIT_EVENTS = ["beforeinput", "input", "compositionstart", "compositionupdate"];
+// IME candidates and text suggestions can resize the viewport with a late or
+// missing visualViewport event; composer edits only re-check the geometry.
+const TAVERN_IOS_EDIT_EVENTS = ["input", "compositionend"];
 
 // 键盘和页面必须同一帧动。安卓上 visualViewport 的 resize 要等输入法动画收尾才来，
 // 只按它锁像素就会出现「输入法先弹，页面过一会才上移」，事件漏一次还会彻底不动。
@@ -52,10 +54,10 @@ function installVisualViewportPin(doc) {
         (navigator?.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const narrow = view.matchMedia(TAVERN_MOBILE_QUERY);
     const touch = view.matchMedia("(pointer: coarse)");
-    const properties = ["--dsh-ios-accessory-inset", "--dsh-vv-top", "--dsh-vv-height", "--dsh-shell-height", "--dsh-keyboard-inset", "--dsh-composer-offset", "--dsh-sheet-max", "--dsh-header-bottom", "--dsh-composer-left", "--dsh-composer-width"];
+    const properties = ["--dsh-vv-top", "--dsh-vv-height", "--dsh-shell-height", "--dsh-keyboard-inset", "--dsh-composer-offset", "--dsh-sheet-max", "--dsh-header-bottom", "--dsh-composer-left", "--dsh-composer-width"];
     const previous = properties.map(name => [name, html.style.getPropertyValue(name), html.style.getPropertyPriority(name)]);
     let frame = 0, chaseFrame = 0, chaseUntil = 0, disposed = false, seat = null, card = null, header = null, boxDirty = true;
-    let iosIdleHeight = 0, iosComposer = null, iosEditedCard = null, iosKeyboardBottom = 0;
+    let iosIdleHeight = 0, iosComposer = null;
     let lastInnerH = -1, lastInnerW = -1, lastVvH = -1, lastVvTop = -1, lastKbTop = -1, lastKbH = -1;
     // Anything wider than the screen lets a phone browser zoom the page out to fit it: the layout viewport grows past
     // 100vw, so every overlay sized to the screen (stage CONFIG art, the phone, sheets) leaves a strip on the right.
@@ -128,8 +130,6 @@ function installVisualViewportPin(doc) {
         if (!iosPhone) {
             iosComposer = null;
             iosIdleHeight = 0;
-            iosEditedCard = null;
-            iosKeyboardBottom = 0;
             removeClasses("dsh-tavern-ios-composer-keyboard");
         }
         if (!narrow.matches && !touch.matches) {
@@ -174,23 +174,9 @@ function installVisualViewportPin(doc) {
             // the viewport confirms the keyboard has actually closed.
             const previousComposer = iosComposer;
             iosComposer = iosKeyboardOpen && (editingComposer || previousComposer === card) ? card : null;
-            let accessoryInset = 0;
-            if (iosComposer) {
-                const bottom = visible + shellTop;
-                if (iosComposer !== previousComposer || (Number(view.innerWidth) || 0) !== lastInnerW) {
-                    iosKeyboardBottom = bottom;
-                } else if (iosEditedCard !== iosComposer) {
-                    // The viewport can pan down just before beforeinput arrives.
-                    iosKeyboardBottom = Math.min(iosKeyboardBottom, bottom);
-                }
-                // Keep the keyboard's original resting position. Cancel only
-                // a downward move by the browser while composing.
-                if (iosEditedCard === iosComposer) accessoryInset = Math.max(0, bottom - iosKeyboardBottom);
-            } else if (previousComposer || !editingComposer) {
-                iosEditedCard = null;
-                iosKeyboardBottom = 0;
-            }
-            setPx("--dsh-ios-accessory-inset", accessoryInset);
+            // The composer sits on the visual viewport's bottom edge, which is the
+            // keyboard's top edge. Typing never adds room under it: a pan of the
+            // visual viewport moves the shell with it, so the card stays put.
             toggleClass("dsh-tavern-ios-composer-keyboard", Boolean(iosComposer));
         }
         toggleClass("dsh-tavern-viewport-pinned", true);
@@ -219,6 +205,19 @@ function installVisualViewportPin(doc) {
         // every menu that opens upward from the composer (更多, access mode, model picker).
         toggleClass("dsh-tavern-seat-scroll", seatScroll);
         recordSnapshot();
+        // The pinned shell never scrolls the page. iOS can leave the page panned
+        // after the keyboard closes (visualViewport.offsetTop stays above 0),
+        // which shifts the fixed shell until the next touch scroll.
+        if (iosPhone && !iosKeyboardOpen && !focusedKeyboardTarget()) settlePageScroll();
+    }
+    function focusedKeyboardTarget() {
+        const active = doc.activeElement;
+        return Boolean(active && active !== doc.body && isKeyboardTarget(active));
+    }
+    function settlePageScroll() {
+        if (!doc.body?.classList?.contains("dsh-tavern-shell-active") || typeof view.scrollTo !== "function") return;
+        const pageTop = Math.max(Number(view.scrollY) || 0, vv ? Number(vv.offsetTop) || 0 : 0);
+        if (pageTop > 0.5) view.scrollTo(0, 0);
     }
 
     function schedule() {
@@ -270,14 +269,7 @@ function installVisualViewportPin(doc) {
     function onComposerEdit(event) {
         const target = event.target;
         if (!narrow.matches || !target || !card?.contains(target) || !isKeyboardTarget(target)) return;
-        if (iosEditedCard !== card) {
-            iosEditedCard = card;
-            immediate();
-        } else {
-            // Text suggestions and IME composition can move the viewport after
-            // input, with a late or missing visualViewport event.
-            onViewportChange();
-        }
+        if (snapshotChanged()) sync();
     }
     function onViewportScroll() {
         if (snapshotChanged()) sync();

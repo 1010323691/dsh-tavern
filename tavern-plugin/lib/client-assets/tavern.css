@@ -3072,6 +3072,11 @@ body.dsh-tavern-shell-active [class*="_tabs"] [class*="_viewsMoreAnchor"] [class
   /* 外壳、侧面板和弹层共享 visualViewport，键盘弹出时只重排一次。
      dsh-go（#dsh-app-insets）已把 #root 钉在状态栏、手势条与软键盘让位区内，外壳留在 #root 内继承这些边界。 */
   html.dsh-tavern-viewport-pinned body.dsh-tavern-shell-active { overflow: hidden; }
+  /* A swipe that reaches the end of the chat must not chain into the page: with
+     the keyboard open that pans the visual viewport and drags the whole shell. */
+  html.dsh-tavern-viewport-pinned:has(body.dsh-tavern-shell-active),
+  html.dsh-tavern-viewport-pinned body.dsh-tavern-shell-active { overscroll-behavior: none; }
+  html.dsh-tavern-viewport-pinned body.dsh-tavern-shell-active [data-conversation-scroll] { overscroll-behavior-y: contain; }
   html.dsh-tavern-viewport-pinned:not(:has(#dsh-app-insets)) body.dsh-tavern-shell-active [data-slot="root"] > [class*="_frame"],
   html.dsh-tavern-viewport-pinned:not(:has(#dsh-app-insets)) body.dsh-tavern-shell-active [data-sidebar-right-panel="fullscreen"] {
     position: fixed !important; top: var(--dsh-vv-top, 0px) !important;
@@ -3339,13 +3344,14 @@ body.dsh-tavern-shell-active [class*="_tabs"] [class*="_viewsMoreAnchor"] [class
     --dsh-composer-model-icon-display: block;
   }
   html.dsh-tavern-coarse-play [data-composer-card] [data-composer-input] { padding: 8px 6px 8px 4px; }
-  /* Keep the idle card floating and cancel downward iOS viewport movement
-     while typing above the keyboard toolbar. */
+  /* Keep the idle card floating above the home indicator. With the keyboard
+     open the shell ends at the keyboard's top edge, which already covers the
+     home indicator, so the safe-area inset would only leave a gap. */
   html.dsh-tavern-ios-composer [data-composer-seat] {
     padding-bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + var(--dsh-keyboard-inset, 0px));
   }
   html.dsh-tavern-ios-composer-keyboard [data-composer-seat] {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--dsh-keyboard-inset, 0px) + var(--dsh-ios-accessory-inset, 0px));
+    padding-bottom: calc(6px + var(--dsh-keyboard-inset, 0px));
   }
   html.dsh-tavern-ios-composer body.dsh-tavern-shell-active [data-composer-card][data-composer-card] {
     width: calc(100% - 24px); margin-inline: auto;

@@ -174,7 +174,7 @@ test('visualViewport 缩小时当场改高度，不等下一帧', () => {
   assert.equal(style.getPropertyValue('--dsh-shell-height'), '100%')
 })
 
-test('iOS 保持输入框原位，只抵消键入后的向下位移', () => {
+test('iOS 输入框贴住键盘，键入和视口平移都不额外留白', () => {
   const { doc, harness, style, release, clock } = installPin({ userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit' })
   const classes = doc.documentElement.classList
   const opened = () => classes.contains('dsh-tavern-ios-composer-keyboard')
@@ -192,24 +192,21 @@ test('iOS 保持输入框原位，只抵消键入后的向下位移', () => {
   harness.vv.dispatch('resize')
   assert.equal(opened(), true)
   assert.equal(style.getPropertyValue('--dsh-vv-top'), '18px')
+  assert.equal(style.getPropertyValue('--dsh-vv-height'), '440px', '外壳正好止于键盘上沿')
   assert.equal(style.getPropertyValue('--dsh-keyboard-inset'), '0px', '工具条让位不重复计算键盘高度')
-  const accessoryInset = () => style.getPropertyValue('--dsh-ios-accessory-inset')
-  assert.equal(accessoryInset(), '0px', '刚弹出键盘时保留原位')
+  assert.equal(style.getPropertyValue('--dsh-ios-accessory-inset'), '', '不再按键入位移额外垫高')
   clock.now += 500
   harness.flush()
-  assert.equal(harness.pending(), 0, '模拟停顿后再键入，之前的键盘动画已结束')
 
-  doc.dispatch('beforeinput', { target: editor })
-  assert.equal(accessoryInset(), '0px', '键入本身不增加留白')
+  // 浏览器为露出光标平移可视区：外壳跟着平移，高度不变。
   harness.vv.offsetTop = 30
-  clock.now += 16
-  harness.flush()
-  assert.equal(style.getPropertyValue('--dsh-vv-top'), '30px')
-  assert.equal(accessoryInset(), '12px', '仅抵消浏览器向下偏移的 12px')
-  harness.vv.height = 392
-  harness.vv.offsetTop = 18
   doc.dispatch('input', { target: editor })
-  assert.equal(accessoryInset(), '0px', '浏览器已缩掉工具条高度时不重复上抬')
+  assert.equal(style.getPropertyValue('--dsh-vv-top'), '30px', '键入后视口事件迟到也当场跟上')
+  assert.equal(style.getPropertyValue('--dsh-vv-height'), '440px')
+  // 输入法候选栏改变键盘高度：外壳跟着键盘上沿走。
+  harness.vv.height = 404
+  doc.dispatch('compositionend', { target: editor })
+  assert.equal(style.getPropertyValue('--dsh-vv-height'), '404px')
 
   doc.activeElement = { nodeType: 1, tagName: 'BUTTON', inComposer: true }
   doc.dispatch('focusout', { target: editor })
@@ -218,18 +215,36 @@ test('iOS 保持输入框原位，只抵消键入后的向下位移', () => {
   harness.vv.offsetTop = 0
   harness.vv.dispatch('resize')
   assert.equal(opened(), false)
-  assert.equal(accessoryInset(), '0px')
-  doc.activeElement = editor
-  doc.dispatch('focusin', { target: editor })
-  harness.vv.height = 440
-  harness.vv.dispatch('resize')
-  assert.equal(accessoryInset(), '0px', '再次打开键盘时清空上次键入状态')
   release()
   assert.equal(classes.contains('dsh-tavern-ios-composer'), false)
 })
 
+test('iOS 键盘收起后把残留的页面平移归零', () => {
+  const { doc, harness, release } = installPin({ userAgent: 'iPhone' })
+  const calls = []
+  harness.view.scrollY = 0
+  harness.view.scrollTo = (x, y) => { calls.push([x, y]); harness.view.scrollY = y; harness.vv.offsetTop = 0 }
+  doc.body.classList = makeClassList()
+  doc.body.classList.add('dsh-tavern-shell-active')
+  const editor = { nodeType: 1, tagName: 'TEXTAREA', inComposer: true }
+  doc.activeElement = editor
+  doc.dispatch('focusin', { target: editor })
+  harness.vv.height = 440
+  harness.vv.offsetTop = 120
+  harness.vv.dispatch('resize')
+  assert.deepEqual(calls, [], '键盘打开时由浏览器负责露出输入框')
+  doc.activeElement = doc.body
+  harness.vv.height = 800
+  harness.vv.offsetTop = 64
+  harness.vv.dispatch('resize')
+  assert.deepEqual(calls, [[0, 0]], '键盘收起后 offsetTop 没归零')
+  harness.vv.dispatch('scroll')
+  assert.equal(calls.length, 1, '已归零时不再滚动')
+  release()
+})
+
 test('iOS 同步缩小布局与可视区时，逐帧变化仍能识别键盘', () => {
-  const { doc, harness, style, release } = installPin({ userAgent: 'iPhone' })
+  const { doc, harness, release } = installPin({ userAgent: 'iPhone' })
   const opened = () => doc.documentElement.classList.contains('dsh-tavern-ios-composer-keyboard')
   doc.activeElement = { nodeType: 1, tagName: 'TEXTAREA', inComposer: true }
   doc.dispatch('focusin', { target: doc.activeElement })
@@ -238,10 +253,6 @@ test('iOS 同步缩小布局与可视区时，逐帧变化仍能识别键盘', (
     harness.view.dispatch('resize')
   }
   assert.equal(opened(), true)
-  harness.view.innerHeight = harness.vv.height = 524
-  harness.view.dispatch('resize')
-  doc.dispatch('compositionstart', { target: doc.activeElement })
-  assert.equal(style.getPropertyValue('--dsh-ios-accessory-inset'), '24px', '组字前一帧的向下偏移也会被抵消')
   harness.view.innerHeight = harness.vv.height = 800
   harness.view.dispatch('resize')
   assert.equal(opened(), false, '关闭键盘时编辑器仍有焦点也要回落')
