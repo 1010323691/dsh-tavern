@@ -3339,6 +3339,33 @@ body.dsh-tavern-shell-active [class*="_tabs"] [class*="_viewsMoreAnchor"] [class
     --dsh-composer-model-icon-display: block;
   }
   html.dsh-tavern-coarse-play [data-composer-card] [data-composer-input] { padding: 8px 6px 8px 4px; }
+  /* iOS can draw the browser's form toolbar over the bottom of the visual
+     viewport. Keep the extra room in the composer seat so the dock, editor
+     and send button stay together in the host's layout. */
+  html.dsh-tavern-ios-composer [data-composer-seat] {
+    padding-bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + var(--dsh-keyboard-inset, 0px) + var(--dsh-ios-accessory-inset, 0px));
+  }
+  html.dsh-tavern-ios-composer-keyboard [data-composer-seat] {
+    --dsh-ios-accessory-inset: 48px;
+  }
+  html.dsh-tavern-ios-composer body.dsh-tavern-shell-active [data-composer-card][data-composer-card] {
+    width: calc(100% - 24px); margin-inline: auto;
+    border-radius: 22px !important;
+    box-shadow: 0 0 0 1px var(--dsw-alias-border-l2), 0 6px 18px #0002;
+  }
+  html.dsh-tavern-ios-composer-keyboard:not(.dsh-tavern-short-viewport) body.dsh-tavern-shell-active [data-composer-card][data-composer-card] {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px 10px !important; row-gap: 4px !important;
+  }
+  html.dsh-tavern-ios-composer-keyboard:not(.dsh-tavern-short-viewport) body.dsh-tavern-shell-active [data-composer-card] > :is([data-input-scroll], [class*="_scroll"]) {
+    grid-column: 1 / -1; grid-row: 3;
+  }
+  html.dsh-tavern-ios-composer-keyboard:not(.dsh-tavern-short-viewport) body.dsh-tavern-shell-active [data-composer-card] > [class*="_row"] > [class*="_tools"] {
+    grid-column: 1; grid-row: 4;
+  }
+  html.dsh-tavern-ios-composer-keyboard:not(.dsh-tavern-short-viewport) body.dsh-tavern-shell-active [data-composer-card] > [class*="_row"] > [class*="_trailing"] {
+    grid-column: 2; grid-row: 4;
+  }
   .dsh-tavern-assistant { font-size: var(--dsh-content-font-size, 14px); line-height: 1.7; gap: 12px; min-width: 0; overflow-wrap: anywhere; }
   .dsh-tavern-user-bubble { font-size: var(--dsh-content-font-size, 14px); line-height: 1.6; padding: 8px 12px; border-radius: 16px; }
   .dsh-tavern-user-stack { max-width: 90%; }

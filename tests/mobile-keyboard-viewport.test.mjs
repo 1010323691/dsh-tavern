@@ -54,11 +54,11 @@ function makeDocument({ width = 390 } = {}) {
     dispatch: (name, event = {}) => (listeners.get(name) || []).forEach(handler => handler(event))
   }
   doc.seat = { getBoundingClientRect: () => ({ top: 700 - (800 - doc.view.innerHeight), left: 0, width }), scrollHeight: 0, clientHeight: 0, isConnected: true, children: [] }
-  doc.card = { getBoundingClientRect: () => ({ top: 700, left: 0, width }) }
+  doc.card = { contains: target => target?.inComposer === true, getBoundingClientRect: () => ({ top: 700, left: 0, width }) }
   return doc
 }
 
-function makeView(doc, { height = 800, visual, keyboardRect } = {}) {
+function makeView(doc, { height = 800, visual, keyboardRect, userAgent = "" } = {}) {
   const frames = new Map()
   let nextFrame = 1
   const listeners = new Map()
@@ -81,7 +81,7 @@ function makeView(doc, { height = 800, visual, keyboardRect } = {}) {
   const view = {
     innerHeight: height,
     visualViewport: vv,
-    navigator: keyboard ? { virtualKeyboard: keyboard } : undefined,
+    navigator: { userAgent, virtualKeyboard: keyboard },
     matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }),
     requestAnimationFrame: handler => { const id = nextFrame++; frames.set(id, handler); return id },
     cancelAnimationFrame: id => frames.delete(id),
@@ -172,6 +172,53 @@ test('visualViewport 缩小时当场改高度，不等下一帧', () => {
   harness.vv.height = 800
   harness.vv.dispatch('resize')
   assert.equal(style.getPropertyValue('--dsh-shell-height'), '100%')
+})
+
+test('iOS 输入工具条让位随键盘进出，点发送时不会提前回落', () => {
+  const { doc, harness, style, release } = installPin({ userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit' })
+  const classes = doc.documentElement.classList
+  const opened = () => classes.contains('dsh-tavern-ios-composer-keyboard')
+  assert.equal(classes.contains('dsh-tavern-ios-composer'), true)
+  assert.equal(opened(), false)
+
+  const editor = { nodeType: 1, isContentEditable: true, inComposer: true }
+  doc.activeElement = editor
+  doc.dispatch('focusin', { target: editor })
+  harness.vv.height = 750
+  harness.vv.dispatch('resize')
+  assert.equal(opened(), false, '浏览器工具栏或实体键盘不触发让位')
+  harness.vv.height = 440
+  harness.vv.offsetTop = 18
+  harness.vv.dispatch('resize')
+  assert.equal(opened(), true)
+  assert.equal(style.getPropertyValue('--dsh-vv-top'), '18px')
+  assert.equal(style.getPropertyValue('--dsh-keyboard-inset'), '0px', '工具条让位不重复计算键盘高度')
+
+  doc.activeElement = { nodeType: 1, tagName: 'BUTTON', inComposer: true }
+  doc.dispatch('focusout', { target: editor })
+  assert.equal(opened(), true, '触摸发送时按钮不能移位')
+  harness.vv.height = 800
+  harness.vv.offsetTop = 0
+  harness.vv.dispatch('resize')
+  assert.equal(opened(), false)
+  release()
+  assert.equal(classes.contains('dsh-tavern-ios-composer'), false)
+})
+
+test('iOS 同步缩小布局与可视区时，逐帧变化仍能识别键盘', () => {
+  const { doc, harness, release } = installPin({ userAgent: 'iPhone' })
+  const opened = () => doc.documentElement.classList.contains('dsh-tavern-ios-composer-keyboard')
+  doc.activeElement = { nodeType: 1, tagName: 'TEXTAREA', inComposer: true }
+  doc.dispatch('focusin', { target: doc.activeElement })
+  for (const height of [770, 740, 710, 680, 500]) {
+    harness.view.innerHeight = harness.vv.height = height
+    harness.view.dispatch('resize')
+  }
+  assert.equal(opened(), true)
+  harness.view.innerHeight = harness.vv.height = 800
+  harness.view.dispatch('resize')
+  assert.equal(opened(), false, '关闭键盘时编辑器仍有焦点也要回落')
+  release()
 })
 
 test('布局视口被原生顶上去时切换成 100%，关闭后回落', () => {

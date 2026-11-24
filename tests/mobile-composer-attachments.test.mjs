@@ -37,7 +37,7 @@ function buildMarkup({ htmlClass, withAccessory, fileCount }) {
   ).join('')
   return `<!doctype html><html class="${htmlClass}"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body class="dsh-tavern-shell-active">
 <div data-dsh-fork-session="play">
-  <div data-composer-seat style="padding:0 16px">
+  <div data-composer-seat style="padding-inline:16px">
     <div>
       <div class="uV2eYG_card" data-composer-card="true">
         <div class="uV2eYG_overlayAnchor" data-composer-overlay="true"></div>
@@ -87,6 +87,8 @@ test('手机端输入框挂载附件后不遮挡、不挤窄输入框，且不�
       }
       return {
         card: box('[data-composer-card]'),
+        seat: box('[data-composer-seat]'),
+        seatBottomPadding: parseFloat(getComputedStyle(document.querySelector('[data-composer-seat]')).paddingBottom),
         acc: box('.uV2eYG_accessory'),
         rail: box('._54WpYG_rail'),
         remove: box('.gSkjMW_remove'),
@@ -121,4 +123,15 @@ test('手机端输入框挂载附件后不遮挡、不挤窄输入框，且不�
   assert.ok(phonePlay.acc.bottom <= phonePlay.rail.top + 0.5, 'phone-play 模式下顶部提示与附件栏不重叠')
   assert.ok(phonePlay.rail.bottom <= phonePlay.input.top + 0.5, 'phone-play 模式下附件栏不遮挡输入框')
   assert.ok(phonePlay.input.width >= 200, `phone-play 模式下输入框应保留充足宽度(${phonePlay.input.width})`)
+
+  const iosClass = 'dsh-tavern-viewport-pinned dsh-tavern-coarse-play dsh-tavern-ios-composer dsh-fork-phone-play'
+  const iosIdle = await measure({ htmlClass: iosClass, withAccessory: false, fileCount: 0 })
+  const iosKeyboard = await measure({ htmlClass: iosClass + ' dsh-tavern-ios-composer-keyboard', withAccessory: true, fileCount: 1 })
+  assert.equal(iosIdle.seatBottomPadding, 16, '收起键盘时输入卡离底')
+  assert.ok(iosIdle.card.left >= iosIdle.seat.left + 12 && iosIdle.card.right <= iosIdle.seat.right - 12, '输入卡左右留白')
+  assert.equal(iosKeyboard.seatBottomPadding - iosIdle.seatBottomPadding, 48, '系统工具条额外占用 48px')
+  assert.ok(iosKeyboard.seat.bottom - iosKeyboard.send.bottom >= 64, '键盘工具条没有盖到发送按钮')
+  assert.ok(iosKeyboard.rail.bottom <= iosKeyboard.input.top + 0.5, '附件仍排在编辑框上方')
+  assert.ok(iosKeyboard.input.bottom <= iosKeyboard.tools.top && iosKeyboard.input.bottom <= iosKeyboard.send.top, '编辑框和发送区分两行')
+
 })

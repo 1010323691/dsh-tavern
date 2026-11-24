@@ -7,6 +7,9 @@ function narrowLayout() { return typeof window.matchMedia === "function" && wind
 const TAVERN_KEYBOARD_INSET_MIN = 8;
 // 焦点进出后自己刷这么多毫秒的帧：安卓输入法动画约 250ms，留出首尾事件的余量。
 const TAVERN_KEYBOARD_SETTLE_MS = 450;
+// iOS browser bars also change the viewport height. Reserve room for the
+// native form controls only for a keyboard-sized change while composing.
+const TAVERN_IOS_KEYBOARD_MIN = 96;
 
 // 键盘和页面必须同一帧动。安卓上 visualViewport 的 resize 要等输入法动画收尾才来，
 // 只按它锁像素就会出现「输入法先弹，页面过一会才上移」，事件漏一次还会彻底不动。
@@ -43,12 +46,16 @@ function installVisualViewportPin(doc) {
     if (!view || !doc.documentElement) return function () {};
     const html = doc.documentElement;
     const vv = view.visualViewport;
-    const keyboard = view.navigator && view.navigator.virtualKeyboard;
+    const navigator = view.navigator;
+    const keyboard = navigator?.virtualKeyboard;
+    const ios = /iPhone|iPad|iPod/.test(navigator?.userAgent || "") ||
+        (navigator?.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const narrow = view.matchMedia(TAVERN_MOBILE_QUERY);
     const touch = view.matchMedia("(pointer: coarse)");
     const properties = ["--dsh-vv-top", "--dsh-vv-height", "--dsh-shell-height", "--dsh-keyboard-inset", "--dsh-composer-offset", "--dsh-sheet-max", "--dsh-header-bottom", "--dsh-composer-left", "--dsh-composer-width"];
     const previous = properties.map(name => [name, html.style.getPropertyValue(name), html.style.getPropertyPriority(name)]);
     let frame = 0, chaseFrame = 0, chaseUntil = 0, disposed = false, seat = null, card = null, header = null, boxDirty = true;
+    let iosIdleHeight = 0, iosComposer = null;
     let lastInnerH = -1, lastInnerW = -1, lastVvH = -1, lastVvTop = -1, lastKbTop = -1, lastKbH = -1;
     // Anything wider than the screen lets a phone browser zoom the page out to fit it: the layout viewport grows past
     // 100vw, so every overlay sized to the screen (stage CONFIG art, the phone, sheets) leaves a strip on the right.
@@ -116,6 +123,13 @@ function installVisualViewportPin(doc) {
         frame = 0;
         if (disposed) return;
         toggleClass("dsh-tavern-coarse-play", narrow.matches);
+        const iosPhone = ios && narrow.matches;
+        toggleClass("dsh-tavern-ios-composer", iosPhone);
+        if (!iosPhone) {
+            iosComposer = null;
+            iosIdleHeight = 0;
+            removeClasses("dsh-tavern-ios-composer-keyboard");
+        }
         if (!narrow.matches && !touch.matches) {
             removeClasses("dsh-tavern-viewport-pinned", "dsh-tavern-short-viewport", "dsh-tavern-seat-scroll");
             restore();
@@ -144,8 +158,20 @@ function installVisualViewportPin(doc) {
         // 外壳真占多高：100% 时由布局视口决定，否则就是脚本算出来的那一段。
         const shellHeight = shell && shell !== "100%" ? parseFloat(shell) : view.innerHeight || height;
         // 剩下的差额交给输入条自己垫：键盘压住多少就抬多少，外壳不用再动。
+        const layoutHeight = view.innerHeight || height;
+        const editingComposer = Boolean(iosPhone && card && doc.activeElement && card.contains(doc.activeElement) && isKeyboardTarget(doc.activeElement));
+        const idleHeight = (Number(view.innerWidth) || 0) === lastInnerW ? Math.max(layoutHeight, iosIdleHeight) : layoutHeight;
+        const iosKeyboardOpen = iosPhone && (layoutHeight - height >= TAVERN_IOS_KEYBOARD_MIN ||
+            ((editingComposer || (iosComposer && iosComposer === card)) && idleHeight - height >= TAVERN_IOS_KEYBOARD_MIN));
         const keyboardInset = keyboardPadPx(keyboard, shellHeight);
         const visible = Math.max(0, shellHeight - keyboardInset);
+        if (iosPhone) {
+            iosIdleHeight = editingComposer || iosKeyboardOpen ? idleHeight : layoutHeight;
+            // Keep the send button in place through pointer focus changes, until
+            // the viewport confirms the keyboard has actually closed.
+            iosComposer = iosKeyboardOpen && (editingComposer || iosComposer === card) ? card : null;
+            toggleClass("dsh-tavern-ios-composer-keyboard", Boolean(iosComposer));
+        }
         toggleClass("dsh-tavern-viewport-pinned", true);
         setValue("--dsh-shell-height", shell || "100%");
         setPx("--dsh-keyboard-inset", keyboardInset);
@@ -284,7 +310,8 @@ function installVisualViewportPin(doc) {
         if (keyboard && typeof keyboard.removeEventListener === "function") keyboard.removeEventListener("geometrychange", onViewportChange);
         narrow.removeEventListener("change", markDirtyAndSchedule);
         touch.removeEventListener("change", markDirtyAndSchedule);
-        html.classList.remove("dsh-tavern-coarse-play", "dsh-tavern-viewport-pinned", "dsh-tavern-short-viewport", "dsh-tavern-seat-scroll");
+        html.classList.remove("dsh-tavern-coarse-play", "dsh-tavern-viewport-pinned", "dsh-tavern-short-viewport", "dsh-tavern-seat-scroll",
+            "dsh-tavern-ios-composer", "dsh-tavern-ios-composer-keyboard");
         restore();
         holdScale(false);
     };
