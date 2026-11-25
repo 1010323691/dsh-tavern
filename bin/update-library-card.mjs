@@ -39,6 +39,12 @@ export async function connectTavern({ url, accessPin, fetchImpl = fetch }) {
       break
     }
     if (!initialized) throw new Error('桌面会话初始化重定向过多')
+  } else if (endpoint.searchParams.has('token')) {
+    // `dsh-tavern status` prints the page address with ?token=; the page exchanges it for the auth cookie the API reads.
+    const login = await fetchImpl(endpoint, { headers: { accept: 'text/html' }, redirect: 'manual' })
+    remember(login)
+    if (!cookies.size) throw new Error('访问令牌认证失败，请使用 dsh-tavern status 显示的最新地址')
+    endpoint.searchParams.delete('token')
   }
   async function request(route, body, { length, query } = {}) {
     const target = new URL(endpoint)
