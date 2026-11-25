@@ -379,6 +379,9 @@ body.dsh-tavern-shell-active span:has(.dsh-tavern-hero-lockup) + span { display:
    座位下面的最后一行正文涂成半透明，看上去像输入框上方的浮层图标挡住了那一行。座位自身没有实色背景，
    关掉渐变后内容只是正常滚到卡片后面，文字不再被“吃掉”一行。桌面与手机同一条规则，表现一致。 */
 [class*="_composerSeat"] { background-image: none !important; }
+/* 渐变关掉后座位整体透明，卡片下方的用量统计行和卡片圆角外侧会透出滚到后面的正文，读起来像文字压在输入框上。
+   卡片与统计行所在的输入条本身垫实色底（与宿主渐变的终点同色），卡片上方的操作按钮行仍保持透明。 */
+[class*="_composerSeat"] [data-slot="conversation.composer.bar"] > :has(> [data-composer-card]) { background-color: var(--dsw-alias-bg-base); }
 .dsh-tavern-side-row-more { width: 28px; height: 28px; flex: none; margin-right: 3px; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; opacity: 0; }
 .dsh-tavern-side-row:hover .dsh-tavern-side-row-more, .dsh-tavern-side-row-more:is(:focus-visible, [aria-expanded="true"]) { opacity: 1; }
 .dsh-tavern-side-row-more:hover { background: var(--dsw-alias-interactive-bg-hover); color: inherit; }
@@ -1207,7 +1210,8 @@ body.dsh-tavern-shell-active [data-dsh-panel-host] { overflow: clip; }
 .dsh-tavern-status-runtime > [role="tabpanel"] { min-width: 0; width: 100%; }
 .dsh-tavern-status-runtime > [role="tabpanel"][hidden] { display: none; }
 
-.dsh-tavern-choice-trigger:disabled { opacity: .5; cursor: not-allowed; }
+/* 禁用时只淡化文字和描边，不降整体不透明度：按钮浮在正文上方，半透明会让后面的正文透出来叠在按钮字上。 */
+.dsh-tavern-choice-trigger:disabled { color: var(--dsw-alias-label-tertiary); border-color: var(--dsw-alias-border-l3); background-color: var(--dsw-alias-bg-base); cursor: not-allowed; }
 
 
 .dsh-tavern-error-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 12px; font-size: 12px; }
